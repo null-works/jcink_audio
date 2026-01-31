@@ -154,6 +154,74 @@ This project was set up in a conversation that covered:
 
 The infrastructure is solid. Now just need the application code.
 
+## Development Workflow
+
+**IMPORTANT: Follow this workflow for every feature/change.**
+
+### 1. Design First
+
+Before writing code, provide a diagram or explanation showing:
+- What the feature does
+- How data flows through the system
+- Which files/components are affected
+
+Example:
+```
+Profile loads → JS reads custom field → POST /api/playlist → yt-dlp → R2 → return URLs
+```
+
+### 2. Unit Tests
+
+Run tests before and after changes:
+
+```bash
+# Run all tests
+python3 -m pytest -v
+
+# Run specific test file
+python3 -m pytest tests/test_database.py -v
+
+# Run with coverage (if installed)
+python3 -m pytest --cov=app tests/
+```
+
+**Test requirements:**
+- All new features must have corresponding tests
+- Tests must pass before committing
+- Database operations → `tests/test_database.py`
+- API endpoints → `tests/test_api.py`
+- Services → `tests/test_services.py` (create as needed)
+
+### 3. Local Verification
+
+Test the app locally before deploying:
+
+```bash
+# Set environment variables
+export DATABASE_PATH=./data/cache.db
+export R2_ENDPOINT=https://5215ebbf6291827b415632f0cd0eae79.r2.cloudflarestorage.com
+export R2_BUCKET=imagehut-media
+export R2_ACCESS_KEY=b6cf7481eae8fddbd2abfd9762246606
+export R2_SECRET_KEY=5047f0a7f482f2347b442eefa06aad455cd5e5e7f70c6a730d5c163f95e34386
+export MAX_TRACKS=10
+export AUDIO_BITRATE=128k
+
+# Run the app
+uvicorn app.main:app --reload --port 8000
+
+# Test health
+curl http://localhost:8000/health
+```
+
+### 4. Commit Workflow
+
+1. Design explanation/diagram
+2. Write tests (TDD preferred)
+3. Implement feature
+4. Run tests: `python3 -m pytest -v`
+5. Verify locally
+6. Commit and push
+
 ## Contact
 
 User is Kyle, IT support professional. Prefers:

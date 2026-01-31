@@ -12,6 +12,10 @@ from app.services.storage import (
     upload_file,
     delete_file,
 )
+from app.services.processor import (
+    process_track,
+    process_playlist,
+)
 
 __all__ = [
     # YouTube
@@ -26,4 +30,7 @@ __all__ = [
     "get_public_url",
     "upload_file",
     "delete_file",
+    # Processor
+    "process_track",
+    "process_playlist",
 ]

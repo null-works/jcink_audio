@@ -1,8 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException
+import asyncio
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from fastapi.responses import RedirectResponse
 import aiosqlite
 
 from app.database import get_db
+from app.config import settings
 from app.models import (
     Status,
     PlaylistSubmit,
@@ -14,7 +16,7 @@ from app.models import (
     create_track,
     get_track,
 )
-from app.services import extract_playlist_id, extract_playlist_info
+from app.services import extract_playlist_id, extract_playlist_info, process_playlist
 
 router = APIRouter()
 
@@ -22,6 +24,7 @@ router = APIRouter()
 @router.post("/playlist", response_model=PlaylistResponse)
 async def submit_playlist(
     data: PlaylistSubmit,
+    background_tasks: BackgroundTasks,
     db: aiosqlite.Connection = Depends(get_db)
 ):
     """Submit a YouTube playlist URL for processing.
@@ -74,7 +77,8 @@ async def submit_playlist(
     )
     await db.commit()
 
-    # TODO: Queue background processing task
+    # Queue background processing task
+    background_tasks.add_task(process_playlist, playlist_id, settings.database_path)
 
     return PlaylistResponse(
         id=playlist_id,

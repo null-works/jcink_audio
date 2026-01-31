@@ -228,3 +228,116 @@ class TestR2Storage:
             await delete_file("audio/PLtest123/videoABC.mp3")
 
             mock_s3.delete_object.assert_called_once()
+
+
+class TestBackgroundProcessor:
+    """Test background processing functionality."""
+
+    @pytest.fixture
+    async def processor_db(self, tmp_path):
+        """Create a test database with playlist and tracks."""
+        import aiosqlite
+
+        db_path = tmp_path / "test.db"
+
+        async with aiosqlite.connect(str(db_path)) as db:
+            await db.execute("""
+                CREATE TABLE playlists (
+                    id TEXT PRIMARY KEY,
+                    url TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    track_count INTEGER DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            await db.execute("""
+                CREATE TABLE tracks (
+                    id TEXT PRIMARY KEY,
+                    playlist_id TEXT NOT NULL,
+                    title TEXT,
+                    duration INTEGER,
+                    r2_key TEXT,
+                    r2_url TEXT,
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    position INTEGER NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            # Insert test data
+            await db.execute(
+                "INSERT INTO playlists (id, url, status, track_count) VALUES (?, ?, ?, ?)",
+                ("PLtest", "https://youtube.com/playlist?list=PLtest", "pending", 2)
+            )
+            await db.execute(
+                "INSERT INTO tracks (id, playlist_id, title, position, status) VALUES (?, ?, ?, ?, ?)",
+                ("track1", "PLtest", "Song One", 1, "pending")
+            )
+            await db.execute(
+                "INSERT INTO tracks (id, playlist_id, title, position, status) VALUES (?, ?, ?, ?, ?)",
+                ("track2", "PLtest", "Song Two", 2, "pending")
+            )
+            await db.commit()
+
+        return str(db_path)
+
+    async def test_process_track_success(self, processor_db, tmp_path):
+        """Test successful track processing."""
+        from app.services.processor import process_track
+
+        with patch("app.services.processor.download_track", new_callable=AsyncMock) as mock_download, \
+             patch("app.services.processor.upload_file", new_callable=AsyncMock) as mock_upload:
+
+            # Mock successful download
+            fake_mp3 = tmp_path / "track1.mp3"
+            fake_mp3.write_bytes(b"fake mp3")
+            mock_download.return_value = str(fake_mp3)
+
+            # Mock successful upload
+            mock_upload.return_value = ("audio/PLtest/track1.mp3", "https://r2.example.com/audio/PLtest/track1.mp3")
+
+            result = await process_track("track1", "PLtest", processor_db)
+
+            assert result is True
+            mock_download.assert_called_once()
+            mock_upload.assert_called_once()
+
+    async def test_process_track_download_failure(self, processor_db):
+        """Test track processing when download fails."""
+        from app.services.processor import process_track
+
+        with patch("app.services.processor.download_track", new_callable=AsyncMock) as mock_download:
+            mock_download.return_value = None
+
+            result = await process_track("track1", "PLtest", processor_db)
+
+            assert result is False
+
+    async def test_process_playlist_success(self, processor_db, tmp_path):
+        """Test processing entire playlist."""
+        from app.services.processor import process_playlist
+        import aiosqlite
+
+        with patch("app.services.processor.download_track", new_callable=AsyncMock) as mock_download, \
+             patch("app.services.processor.upload_file", new_callable=AsyncMock) as mock_upload:
+
+            # Mock downloads
+            fake_mp3 = tmp_path / "track.mp3"
+            fake_mp3.write_bytes(b"fake mp3")
+            mock_download.return_value = str(fake_mp3)
+
+            # Mock uploads
+            mock_upload.return_value = ("audio/PLtest/track.mp3", "https://r2.example.com/audio/PLtest/track.mp3")
+
+            await process_playlist("PLtest", processor_db)
+
+            # Verify playlist status is complete
+            async with aiosqlite.connect(processor_db) as db:
+                cursor = await db.execute("SELECT status FROM playlists WHERE id = ?", ("PLtest",))
+                row = await cursor.fetchone()
+                assert row[0] == "complete"
+
+                # Verify all tracks are complete
+                cursor = await db.execute("SELECT status FROM tracks WHERE playlist_id = ?", ("PLtest",))
+                rows = await cursor.fetchall()
+                assert all(row[0] == "complete" for row in rows)

@@ -19,6 +19,10 @@
     <ul id="player-list" class="player-list"></ul>
   </div>
   <audio id="player-audio"></audio>
+  <button id="player-debug-btn" class="player-debug-btn">Debug</button>
+  <div id="player-debug" class="player-debug" style="display:none;">
+    <pre id="player-log"></pre>
+  </div>
 </div>
 
 <style>
@@ -65,6 +69,11 @@
 .player-list li.pending { color: var(--player-muted); font-style: italic; }
 .player-list li.pending::after { content: " (loading)"; }
 .player-list li.error { color: #900; text-decoration: line-through; }
+
+.player-debug-btn { width: 100%; margin-top: 10px; padding: 5px; font-size: 10px; border: 1px solid var(--player-border); background: var(--player-bg); color: var(--player-muted); cursor: pointer; }
+.player-debug-btn:hover { background: var(--player-muted); color: var(--player-bg); }
+.player-debug { margin-top: 5px; border: 1px solid var(--player-border); background: #111; color: #0f0; max-height: 200px; overflow-y: auto; }
+.player-debug pre { margin: 0; padding: 5px; font-size: 9px; white-space: pre-wrap; word-break: break-all; font-family: monospace; }
 </style>
 
 <script>
@@ -86,10 +95,27 @@
   var listWrap = document.getElementById('player-list-wrap');
   var listEl = document.getElementById('player-list');
   var audio = document.getElementById('player-audio');
+  var debugBtn = document.getElementById('player-debug-btn');
+  var debugPanel = document.getElementById('player-debug');
+  var logEl = document.getElementById('player-log');
 
   var tracks = [];
   var currentIndex = 0;
   var playlistData = null;
+  var debugVisible = false;
+
+  function log(msg) {
+    var ts = new Date().toISOString().substr(11, 8);
+    logEl.textContent += '[' + ts + '] ' + msg + '\n';
+    logEl.scrollTop = logEl.scrollHeight;
+    console.log('[Player] ' + msg);
+  }
+
+  debugBtn.addEventListener('click', function() {
+    debugVisible = !debugVisible;
+    debugPanel.style.display = debugVisible ? 'block' : 'none';
+    debugBtn.textContent = debugVisible ? 'Hide Debug' : 'Debug';
+  });
 
   function formatTime(s) {
     if (isNaN(s)) return '0:00';
@@ -101,6 +127,7 @@
   function setStatus(msg, isError) {
     statusEl.textContent = msg;
     statusEl.className = isError ? 'player-status error' : 'player-status';
+    log('STATUS: ' + msg + (isError ? ' [ERROR]' : ''));
   }
 
   function showPlayer() {
@@ -139,8 +166,9 @@
     var t = tracks[idx];
     if (t.status !== 'complete') return;
     currentIndex = idx;
-    // Use API endpoint which generates presigned URL
-    audio.src = API_BASE + '/api/track/' + t.id;
+    var trackUrl = API_BASE + '/api/track/' + t.id;
+    log('PLAY: ' + t.title + ' -> ' + trackUrl);
+    audio.src = trackUrl;
     audio.play();
     titleEl.textContent = t.title;
     playBtn.innerHTML = '&#10074;&#10074;';
@@ -161,16 +189,28 @@
 
   function loadPlaylist() {
     setStatus('Loading playlist...');
-    fetch(API_BASE + '/api/playlist', {
+    var url = API_BASE + '/api/playlist';
+    log('POST ' + url);
+    log('Body: ' + JSON.stringify({ url: PLAYLIST_URL }));
+    fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url: PLAYLIST_URL })
     })
-    .then(function(r) { if (!r.ok) throw new Error('Failed'); return r.json(); })
+    .then(function(r) {
+      log('Response: ' + r.status + ' ' + r.statusText);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
     .then(function(data) {
+      log('Data: ' + JSON.stringify(data).substring(0, 500));
       playlistData = data;
       tracks = data.tracks;
       if (tracks.length === 0) { setStatus('No tracks found', true); return; }
+      log('Tracks: ' + tracks.length + ', Status: ' + data.status);
+      for (var i = 0; i < tracks.length; i++) {
+        log('  [' + i + '] ' + tracks[i].title + ' (' + tracks[i].status + ')');
+      }
       var hasReady = false;
       for (var i = 0; i < tracks.length; i++) { if (tracks[i].status === 'complete') { hasReady = true; break; } }
       if (hasReady) {
@@ -184,13 +224,21 @@
         setStatus('Failed to process', true);
       }
     })
-    .catch(function(e) { setStatus('Error: ' + e.message, true); });
+    .catch(function(e) {
+      log('FETCH ERROR: ' + e.message);
+      setStatus('Error: ' + e.message, true);
+    });
   }
 
   function pollUpdates() {
     if (!playlistData) return;
-    fetch(API_BASE + '/api/playlist/' + playlistData.id)
-    .then(function(r) { return r.json(); })
+    var url = API_BASE + '/api/playlist/' + playlistData.id;
+    log('GET ' + url);
+    fetch(url)
+    .then(function(r) {
+      log('Poll response: ' + r.status);
+      return r.json();
+    })
     .then(function(data) {
       playlistData = data;
       tracks = data.tracks;
@@ -199,11 +247,19 @@
         if (tracks[i].status === 'complete') hasReady = true;
         if (tracks[i].status !== 'complete' && tracks[i].status !== 'error') allDone = false;
       }
+      log('Poll: hasReady=' + hasReady + ', allDone=' + allDone);
       if (hasReady) { showPlayer(); renderList(); updateButtons(); }
       if (!allDone) { setTimeout(pollUpdates, 3000); } else { renderList(); }
     })
-    .catch(function() { setTimeout(pollUpdates, 5000); });
+    .catch(function(e) {
+      log('Poll error: ' + e.message);
+      setTimeout(pollUpdates, 5000);
+    });
   }
+
+  audio.addEventListener('error', function(e) {
+    log('AUDIO ERROR: ' + (audio.error ? audio.error.message : 'unknown'));
+  });
 
   playBtn.addEventListener('click', function() {
     if (audio.paused) {
@@ -240,6 +296,9 @@
     audio.currentTime = ((e.clientX - rect.left) / rect.width) * audio.duration;
   });
 
+  log('Player init');
+  log('API_BASE: ' + API_BASE);
+  log('PLAYLIST_URL: ' + PLAYLIST_URL);
   loadPlaylist();
 })();
 </script>

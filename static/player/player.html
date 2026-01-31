@@ -1,39 +1,244 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Audio Player</title>
-    <link rel="stylesheet" href="player.css">
-</head>
-<body>
-    <div id="player" class="player">
-        <div id="status" class="status">Loading...</div>
+<!--
+  Audio Player Widget
+  Embed directly in Jcink. Override CSS variables for theming:
+  --player-bg, --player-text, --player-border, --player-accent, --player-muted
+-->
+<div id="audio-player" class="audio-player">
+  <div id="player-status" class="player-status">Loading...</div>
+  <div id="player-now" class="player-now" style="display:none;"><span id="player-title">-</span></div>
+  <div id="player-controls" class="player-controls" style="display:none;">
+    <button id="player-prev" class="player-btn" title="Previous">&lt;</button>
+    <button id="player-play" class="player-btn player-btn-main" title="Play">&#9654;</button>
+    <button id="player-next" class="player-btn" title="Next">&gt;</button>
+  </div>
+  <div id="player-progress-wrap" class="player-progress-wrap" style="display:none;">
+    <div id="player-progress-bar" class="player-progress-bar"><div id="player-progress" class="player-progress"></div></div>
+    <span id="player-time" class="player-time">0:00 / 0:00</span>
+  </div>
+  <div id="player-list-wrap" class="player-list-wrap" style="display:none;">
+    <ul id="player-list" class="player-list"></ul>
+  </div>
+  <audio id="player-audio"></audio>
+</div>
 
-        <div id="now-playing" class="now-playing" style="display: none;">
-            <span id="track-title">-</span>
-        </div>
+<style>
+.audio-player {
+  --player-bg: #fff;
+  --player-text: #000;
+  --player-border: #000;
+  --player-accent: #000;
+  --player-muted: #666;
 
-        <div id="controls" class="controls" style="display: none;">
-            <button id="prev-btn" class="btn" title="Previous">&lt;</button>
-            <button id="play-btn" class="btn btn-play" title="Play">&#9654;</button>
-            <button id="next-btn" class="btn" title="Next">&gt;</button>
-        </div>
+  max-width: 300px;
+  padding: 10px;
+  border: 1px solid var(--player-border);
+  background: var(--player-bg);
+  color: var(--player-text);
+  font-family: inherit;
+  font-size: 12px;
+  box-sizing: border-box;
+}
+.audio-player *, .audio-player *::before, .audio-player *::after { box-sizing: border-box; }
 
-        <div id="progress-container" class="progress-container" style="display: none;">
-            <div id="progress-bar" class="progress-bar">
-                <div id="progress" class="progress"></div>
-            </div>
-            <span id="time" class="time">0:00 / 0:00</span>
-        </div>
+.player-status { text-align: center; padding: 5px; font-size: 11px; color: var(--player-muted); }
+.player-status.error { color: #900; }
 
-        <div id="playlist" class="playlist" style="display: none;">
-            <ul id="track-list"></ul>
-        </div>
+.player-now { padding: 8px 0; text-align: center; font-weight: bold; border-bottom: 1px solid var(--player-border); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-        <audio id="audio"></audio>
-    </div>
+.player-controls { display: flex; justify-content: center; gap: 10px; padding: 10px 0; }
+.player-btn { width: 30px; height: 30px; border: 1px solid var(--player-border); background: var(--player-bg); color: var(--player-text); cursor: pointer; font-size: 12px; display: flex; align-items: center; justify-content: center; }
+.player-btn:hover { background: var(--player-accent); color: var(--player-bg); }
+.player-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.player-btn:disabled:hover { background: var(--player-bg); color: var(--player-text); }
+.player-btn-main { width: 40px; }
 
-    <script src="player.js"></script>
-</body>
-</html>
+.player-progress-wrap { padding: 5px 0; }
+.player-progress-bar { width: 100%; height: 4px; background: var(--player-muted); cursor: pointer; }
+.player-progress { height: 100%; width: 0%; background: var(--player-accent); }
+.player-time { display: block; text-align: center; font-size: 10px; color: var(--player-muted); margin-top: 3px; }
+
+.player-list-wrap { border-top: 1px solid var(--player-border); margin-top: 10px; padding-top: 5px; max-height: 150px; overflow-y: auto; }
+.player-list { list-style: none; margin: 0; padding: 0; }
+.player-list li { padding: 5px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 11px; }
+.player-list li:hover { background: var(--player-muted); color: var(--player-bg); }
+.player-list li.active { background: var(--player-accent); color: var(--player-bg); }
+.player-list li.pending { color: var(--player-muted); font-style: italic; }
+.player-list li.pending::after { content: " (loading)"; }
+.player-list li.error { color: #900; text-decoration: line-through; }
+</style>
+
+<script>
+(function() {
+  var PLAYLIST_URL = "https://www.youtube.com/playlist?list=PLnfCKRnC86UN5_jVdWnRhfuNNu7X1FyRU";
+  var API_BASE = "https://audio.imagehut.ch";
+
+  var statusEl = document.getElementById('player-status');
+  var nowEl = document.getElementById('player-now');
+  var titleEl = document.getElementById('player-title');
+  var controlsEl = document.getElementById('player-controls');
+  var prevBtn = document.getElementById('player-prev');
+  var playBtn = document.getElementById('player-play');
+  var nextBtn = document.getElementById('player-next');
+  var progressWrap = document.getElementById('player-progress-wrap');
+  var progressBar = document.getElementById('player-progress-bar');
+  var progressEl = document.getElementById('player-progress');
+  var timeEl = document.getElementById('player-time');
+  var listWrap = document.getElementById('player-list-wrap');
+  var listEl = document.getElementById('player-list');
+  var audio = document.getElementById('player-audio');
+
+  var tracks = [];
+  var currentIndex = 0;
+  var playlistData = null;
+
+  function formatTime(s) {
+    if (isNaN(s)) return '0:00';
+    var m = Math.floor(s / 60);
+    var sec = Math.floor(s % 60);
+    return m + ':' + (sec < 10 ? '0' : '') + sec;
+  }
+
+  function setStatus(msg, isError) {
+    statusEl.textContent = msg;
+    statusEl.className = isError ? 'player-status error' : 'player-status';
+  }
+
+  function showPlayer() {
+    statusEl.style.display = 'none';
+    nowEl.style.display = 'block';
+    controlsEl.style.display = 'flex';
+    progressWrap.style.display = 'block';
+    listWrap.style.display = 'block';
+  }
+
+  function renderList() {
+    listEl.innerHTML = '';
+    for (var i = 0; i < tracks.length; i++) {
+      var t = tracks[i];
+      var li = document.createElement('li');
+      li.textContent = (i + 1) + '. ' + t.title;
+      li.setAttribute('data-index', i);
+      if (t.status === 'pending' || t.status === 'processing') {
+        li.className = 'pending';
+      } else if (t.status === 'error') {
+        li.className = 'error';
+      } else if (i === currentIndex) {
+        li.className = 'active';
+      }
+      (function(idx, track) {
+        li.addEventListener('click', function() {
+          if (track.status === 'complete') playTrack(idx);
+        });
+      })(i, t);
+      listEl.appendChild(li);
+    }
+  }
+
+  function playTrack(idx) {
+    if (idx < 0 || idx >= tracks.length) return;
+    var t = tracks[idx];
+    if (t.status !== 'complete' || !t.r2_url) return;
+    currentIndex = idx;
+    audio.src = t.r2_url;
+    audio.play();
+    titleEl.textContent = t.title;
+    playBtn.innerHTML = '&#10074;&#10074;';
+    renderList();
+  }
+
+  function updateButtons() {
+    var hasReady = false;
+    for (var i = 0; i < tracks.length; i++) { if (tracks[i].status === 'complete') { hasReady = true; break; } }
+    playBtn.disabled = !hasReady;
+    var hasPrev = false;
+    for (var i = currentIndex - 1; i >= 0; i--) { if (tracks[i].status === 'complete') { hasPrev = true; break; } }
+    prevBtn.disabled = !hasPrev;
+    var hasNext = false;
+    for (var i = currentIndex + 1; i < tracks.length; i++) { if (tracks[i].status === 'complete') { hasNext = true; break; } }
+    nextBtn.disabled = !hasNext;
+  }
+
+  function loadPlaylist() {
+    setStatus('Loading playlist...');
+    fetch(API_BASE + '/api/playlist', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: PLAYLIST_URL })
+    })
+    .then(function(r) { if (!r.ok) throw new Error('Failed'); return r.json(); })
+    .then(function(data) {
+      playlistData = data;
+      tracks = data.tracks;
+      if (tracks.length === 0) { setStatus('No tracks found', true); return; }
+      var hasReady = false;
+      for (var i = 0; i < tracks.length; i++) { if (tracks[i].status === 'complete') { hasReady = true; break; } }
+      if (hasReady) {
+        showPlayer();
+        renderList();
+        updateButtons();
+      } else if (data.status === 'pending' || data.status === 'processing') {
+        setStatus('Processing tracks...');
+        pollUpdates();
+      } else if (data.status === 'error') {
+        setStatus('Failed to process', true);
+      }
+    })
+    .catch(function(e) { setStatus('Error: ' + e.message, true); });
+  }
+
+  function pollUpdates() {
+    if (!playlistData) return;
+    fetch(API_BASE + '/api/playlist/' + playlistData.id)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      playlistData = data;
+      tracks = data.tracks;
+      var hasReady = false, allDone = true;
+      for (var i = 0; i < tracks.length; i++) {
+        if (tracks[i].status === 'complete') hasReady = true;
+        if (tracks[i].status !== 'complete' && tracks[i].status !== 'error') allDone = false;
+      }
+      if (hasReady) { showPlayer(); renderList(); updateButtons(); }
+      if (!allDone) { setTimeout(pollUpdates, 3000); } else { renderList(); }
+    })
+    .catch(function() { setTimeout(pollUpdates, 5000); });
+  }
+
+  playBtn.addEventListener('click', function() {
+    if (audio.paused) {
+      if (audio.src) { audio.play(); }
+      else {
+        for (var i = 0; i < tracks.length; i++) { if (tracks[i].status === 'complete') { playTrack(i); break; } }
+      }
+    } else { audio.pause(); }
+  });
+
+  prevBtn.addEventListener('click', function() {
+    for (var i = currentIndex - 1; i >= 0; i--) { if (tracks[i].status === 'complete') { playTrack(i); break; } }
+  });
+
+  nextBtn.addEventListener('click', function() {
+    for (var i = currentIndex + 1; i < tracks.length; i++) { if (tracks[i].status === 'complete') { playTrack(i); break; } }
+  });
+
+  audio.addEventListener('play', function() { playBtn.innerHTML = '&#10074;&#10074;'; });
+  audio.addEventListener('pause', function() { playBtn.innerHTML = '&#9654;'; });
+  audio.addEventListener('ended', function() {
+    for (var i = currentIndex + 1; i < tracks.length; i++) { if (tracks[i].status === 'complete') { playTrack(i); return; } }
+    playBtn.innerHTML = '&#9654;';
+  });
+  audio.addEventListener('timeupdate', function() {
+    if (audio.duration) {
+      progressEl.style.width = (audio.currentTime / audio.duration * 100) + '%';
+      timeEl.textContent = formatTime(audio.currentTime) + ' / ' + formatTime(audio.duration);
+    }
+  });
+  progressBar.addEventListener('click', function(e) {
+    if (!audio.duration) return;
+    var rect = progressBar.getBoundingClientRect();
+    audio.currentTime = ((e.clientX - rect.left) / rect.width) * audio.duration;
+  });
+
+  loadPlaylist();
+})();
+</script>

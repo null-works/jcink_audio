@@ -4,6 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import init_db
+from app.routes import playlist_router
 
 
 @asynccontextmanager
@@ -33,6 +34,5 @@ async def health_check():
     return {"status": "ok"}
 
 
-# Routes will be added here:
-# from app.routes import playlist
-# app.include_router(playlist.router, prefix="/api")
+# Register API routes
+app.include_router(playlist_router, prefix="/api")

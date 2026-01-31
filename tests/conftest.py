@@ -14,7 +14,7 @@ os.environ["MAX_TRACKS"] = "10"
 os.environ["AUDIO_BITRATE"] = "128k"
 
 from app.main import app
-from app.database import init_db
+from app.database import get_db
 
 
 @pytest.fixture
@@ -22,8 +22,6 @@ async def test_db():
     """Create a temporary test database."""
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
         db_path = f.name
-
-    os.environ["DATABASE_PATH"] = db_path
 
     # Initialize tables
     async with aiosqlite.connect(db_path) as db:
@@ -51,6 +49,10 @@ async def test_db():
                 FOREIGN KEY (playlist_id) REFERENCES playlists(id)
             )
         """)
+        await db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_tracks_playlist
+            ON tracks(playlist_id)
+        """)
         await db.commit()
 
     yield db_path
@@ -61,7 +63,23 @@ async def test_db():
 
 @pytest.fixture
 async def client(test_db):
-    """Create async test client."""
+    """Create async test client with overridden database dependency."""
+
+    async def override_get_db():
+        """Override database dependency to use test database."""
+        db = await aiosqlite.connect(test_db)
+        db.row_factory = aiosqlite.Row
+        try:
+            yield db
+        finally:
+            await db.close()
+
+    # Override the dependency
+    app.dependency_overrides[get_db] = override_get_db
+
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
+
+    # Clean up override
+    app.dependency_overrides.clear()

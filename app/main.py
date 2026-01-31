@@ -1,0 +1,27 @@
+from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
+
+app = FastAPI(title="YouTube Audio Cache", version="1.0.0")
+
+# CORS for Jcink embeds
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Mount static files for player widget
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+
+@app.get("/health")
+async def health_check():
+    return {"status": "ok"}
+
+
+# Routes will be added here:
+# from app.routes import playlist
+# app.include_router(playlist.router, prefix="/api")

@@ -1,0 +1,16 @@
+services:
+  audio-cache:
+    build: .
+    container_name: audio-cache
+    restart: unless-stopped
+    ports:
+      - "8942:8000"
+    volumes:
+      - /opt/youtube-cache/data:/app/data
+    environment:
+      - R2_ENDPOINT=https://5215ebbf6291827b415632f0cd0eae79.r2.cloudflarestorage.com
+      - R2_BUCKET=imagehut-media
+      - R2_ACCESS_KEY=b6cf7481eae8fddbd2abfd9762246606
+      - R2_SECRET_KEY=5047f0a7f482f2347b442eefa06aad455cd5e5e7f70c6a730d5c163f95e34386
+      - MAX_TRACKS=10
+      - AUDIO_BITRATE=128k

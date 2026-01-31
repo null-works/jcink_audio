@@ -51,23 +51,21 @@ class TestExtractPlaylistInfo:
 
     @pytest.fixture
     def mock_playlist_response(self):
-        """Mock yt-dlp playlist extraction response."""
-        return {
-            "id": "PLtest123",
-            "title": "Test Playlist",
-            "entries": [
-                {"id": "video1", "title": "Song One", "duration": 180},
-                {"id": "video2", "title": "Song Two", "duration": 240},
-                {"id": "video3", "title": "Song Three", "duration": 200},
-            ]
-        }
+        """Mock yt-dlp playlist extraction response (JSONL format)."""
+        # yt-dlp outputs one JSON object per line
+        entries = [
+            {"id": "video1", "title": "Song One", "duration": 180, "playlist_title": "Test Playlist"},
+            {"id": "video2", "title": "Song Two", "duration": 240, "playlist_title": "Test Playlist"},
+            {"id": "video3", "title": "Song Three", "duration": 200, "playlist_title": "Test Playlist"},
+        ]
+        return "\n".join(json.dumps(e) for e in entries)
 
     async def test_extract_playlist_info_success(self, mock_playlist_response):
         """Test successful playlist extraction."""
         with patch("app.services.youtube.asyncio.create_subprocess_exec") as mock_exec:
             mock_process = AsyncMock()
             mock_process.communicate.return_value = (
-                json.dumps(mock_playlist_response).encode(),
+                mock_playlist_response.encode(),
                 b""
             )
             mock_process.returncode = 0
@@ -85,16 +83,17 @@ class TestExtractPlaylistInfo:
 
     async def test_extract_playlist_enforces_max_tracks(self, mock_playlist_response):
         """Test that playlist extraction respects MAX_TRACKS limit."""
-        # Add more tracks to exceed limit
-        mock_playlist_response["entries"] = [
-            {"id": f"video{i}", "title": f"Song {i}", "duration": 180}
+        # Create 15 tracks in JSONL format
+        entries = [
+            {"id": f"video{i}", "title": f"Song {i}", "duration": 180, "playlist_title": "Test Playlist"}
             for i in range(15)
         ]
+        jsonl_response = "\n".join(json.dumps(e) for e in entries)
 
         with patch("app.services.youtube.asyncio.create_subprocess_exec") as mock_exec:
             mock_process = AsyncMock()
             mock_process.communicate.return_value = (
-                json.dumps(mock_playlist_response).encode(),
+                jsonl_response.encode(),
                 b""
             )
             mock_process.returncode = 0

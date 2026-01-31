@@ -73,10 +73,22 @@ async def extract_playlist_info(url: str) -> PlaylistInfo | None:
         if process.returncode != 0:
             return None
 
-        # Parse the JSON output
-        data = json.loads(stdout.decode())
+        # yt-dlp outputs one JSON object per line (JSONL format)
+        lines = stdout.decode().strip().split('\n')
+        entries = []
+        playlist_title = "Unknown Playlist"
 
-        entries = data.get("entries", [])
+        for line in lines:
+            if not line.strip():
+                continue
+            try:
+                entry = json.loads(line)
+                entries.append(entry)
+                # Get playlist title from first entry
+                if len(entries) == 1:
+                    playlist_title = entry.get("playlist_title", "Unknown Playlist")
+            except json.JSONDecodeError:
+                continue
 
         # Limit to MAX_TRACKS
         entries = entries[:settings.max_tracks]
@@ -92,9 +104,12 @@ async def extract_playlist_info(url: str) -> PlaylistInfo | None:
             if entry.get("id")
         ]
 
+        if not tracks:
+            return None
+
         return PlaylistInfo(
-            id=data.get("id", playlist_id),
-            title=data.get("title", "Unknown Playlist"),
+            id=playlist_id,
+            title=playlist_title,
             tracks=tracks,
         )
 

@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Player</title>
+    <link rel="stylesheet" href="player.css">
+</head>
+<body>
+    <div id="player" class="player">
+        <div id="status" class="status">Loading...</div>
+
+        <div id="now-playing" class="now-playing" style="display: none;">
+            <span id="track-title">-</span>
+        </div>
+
+        <div id="controls" class="controls" style="display: none;">
+            <button id="prev-btn" class="btn" title="Previous">&lt;</button>
+            <button id="play-btn" class="btn btn-play" title="Play">&#9654;</button>
+            <button id="next-btn" class="btn" title="Next">&gt;</button>
+        </div>
+
+        <div id="progress-container" class="progress-container" style="display: none;">
+            <div id="progress-bar" class="progress-bar">
+                <div id="progress" class="progress"></div>
+            </div>
+            <span id="time" class="time">0:00 / 0:00</span>
+        </div>
+
+        <div id="playlist" class="playlist" style="display: none;">
+            <ul id="track-list"></ul>
+        </div>
+
+        <audio id="audio"></audio>
+    </div>
+
+    <script src="player.js"></script>
+</body>
+</html>

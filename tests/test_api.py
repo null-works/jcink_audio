@@ -128,10 +128,12 @@ class TestPlaylistEndpoints:
         assert response.status_code == 404
 
     async def test_get_track_redirect(self, client, test_db, mock_playlist_info):
-        """Test track redirect to R2 URL."""
+        """Test track redirect to presigned R2 URL."""
         with patch("app.routes.playlist.extract_playlist_info", new_callable=AsyncMock) as mock_extract, \
-             patch("app.routes.playlist.process_playlist", new_callable=AsyncMock):
+             patch("app.routes.playlist.process_playlist", new_callable=AsyncMock), \
+             patch("app.routes.playlist.get_public_url") as mock_presign:
             mock_extract.return_value = mock_playlist_info
+            mock_presign.return_value = "https://r2.example.com/presigned/audio/test.mp3?token=abc"
 
             # Create playlist
             await client.post(
@@ -139,19 +141,19 @@ class TestPlaylistEndpoints:
                 json={"url": "https://youtube.com/playlist?list=PLtest123"}
             )
 
-            # Manually update track with R2 URL for testing
+            # Manually update track with R2 key for testing
             import aiosqlite
             async with aiosqlite.connect(test_db) as db:
                 await db.execute(
-                    "UPDATE tracks SET status='complete', r2_url='https://r2.example.com/audio/test.mp3' WHERE id='video1'"
+                    "UPDATE tracks SET status='complete', r2_key='audio/PLtest123/video1.mp3' WHERE id='video1'"
                 )
                 await db.commit()
 
-            # Get track - should redirect
+            # Get track - should redirect to presigned URL
             response = await client.get("/api/track/video1", follow_redirects=False)
 
             assert response.status_code == 302
-            assert "r2.example.com" in response.headers["location"]
+            assert "presigned" in response.headers["location"]
 
     async def test_get_track_not_ready(self, client, test_db, mock_playlist_info):
         """Test getting track that hasn't been processed yet."""

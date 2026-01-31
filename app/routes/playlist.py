@@ -17,6 +17,7 @@ from app.models import (
     get_track,
 )
 from app.services import extract_playlist_id, extract_playlist_info, process_playlist
+from app.services.storage import get_public_url
 
 router = APIRouter()
 
@@ -115,12 +116,12 @@ async def get_track_audio(
     track_id: str,
     db: aiosqlite.Connection = Depends(get_db)
 ):
-    """Get track audio - redirects to R2 URL if ready."""
+    """Get track audio - redirects to presigned R2 URL if ready."""
     track = await get_track(db, track_id)
     if not track:
         raise HTTPException(status_code=404, detail="Track not found")
 
-    if track.status != Status.COMPLETE or not track.r2_url:
+    if track.status != Status.COMPLETE or not track.r2_key:
         # Track not ready yet
         raise HTTPException(
             status_code=202,
@@ -128,5 +129,6 @@ async def get_track_audio(
             headers={"Retry-After": "5"}
         )
 
-    # Redirect to R2 URL
-    return RedirectResponse(url=track.r2_url, status_code=302)
+    # Generate presigned URL on-demand (valid for 1 hour)
+    presigned_url = get_public_url(track.r2_key)
+    return RedirectResponse(url=presigned_url, status_code=302)

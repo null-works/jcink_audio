@@ -137,9 +137,10 @@
   function playTrack(idx) {
     if (idx < 0 || idx >= tracks.length) return;
     var t = tracks[idx];
-    if (t.status !== 'complete' || !t.r2_url) return;
+    if (t.status !== 'complete') return;
     currentIndex = idx;
-    audio.src = t.r2_url;
+    // Use API endpoint which generates presigned URL
+    audio.src = API_BASE + '/api/track/' + t.id;
     audio.play();
     titleEl.textContent = t.title;
     playBtn.innerHTML = '&#10074;&#10074;';

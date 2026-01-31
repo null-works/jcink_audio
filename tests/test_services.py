@@ -152,3 +152,79 @@ class TestDownloadTrack:
             result = await download_track("badvideo", str(tmp_path))
 
             assert result is None
+
+
+class TestR2Storage:
+    """Test R2 storage operations."""
+
+    def test_get_r2_client(self):
+        """Test R2 client creation."""
+        from app.services.storage import get_r2_client
+
+        client = get_r2_client()
+        assert client is not None
+
+    def test_generate_r2_key(self):
+        """Test R2 key generation."""
+        from app.services.storage import generate_r2_key
+
+        key = generate_r2_key("PLtest123", "videoABC")
+        assert key == "audio/PLtest123/videoABC.mp3"
+
+    def test_get_public_url(self):
+        """Test public URL generation."""
+        from app.services.storage import get_public_url
+
+        url = get_public_url("audio/PLtest123/videoABC.mp3")
+        assert "audio/PLtest123/videoABC.mp3" in url
+        assert url.startswith("https://")
+
+    async def test_upload_file_success(self, tmp_path):
+        """Test successful file upload."""
+        from app.services.storage import upload_file
+
+        # Create a fake MP3 file
+        fake_mp3 = tmp_path / "test.mp3"
+        fake_mp3.write_bytes(b"fake mp3 content")
+
+        with patch("app.services.storage.get_r2_client") as mock_client:
+            mock_s3 = MagicMock()
+            mock_client.return_value = mock_s3
+
+            r2_key, r2_url = await upload_file(str(fake_mp3), "PLtest123", "videoABC")
+
+            assert r2_key == "audio/PLtest123/videoABC.mp3"
+            assert "audio/PLtest123/videoABC.mp3" in r2_url
+            mock_s3.upload_file.assert_called_once()
+
+    async def test_upload_file_failure(self, tmp_path):
+        """Test upload failure handling."""
+        from app.services.storage import upload_file
+        from botocore.exceptions import ClientError
+
+        fake_mp3 = tmp_path / "test.mp3"
+        fake_mp3.write_bytes(b"fake mp3 content")
+
+        with patch("app.services.storage.get_r2_client") as mock_client:
+            mock_s3 = MagicMock()
+            mock_s3.upload_file.side_effect = ClientError(
+                {"Error": {"Code": "500", "Message": "Internal Error"}},
+                "upload_file"
+            )
+            mock_client.return_value = mock_s3
+
+            result = await upload_file(str(fake_mp3), "PLtest123", "videoABC")
+
+            assert result is None
+
+    async def test_delete_file(self):
+        """Test file deletion."""
+        from app.services.storage import delete_file
+
+        with patch("app.services.storage.get_r2_client") as mock_client:
+            mock_s3 = MagicMock()
+            mock_client.return_value = mock_s3
+
+            await delete_file("audio/PLtest123/videoABC.mp3")
+
+            mock_s3.delete_object.assert_called_once()

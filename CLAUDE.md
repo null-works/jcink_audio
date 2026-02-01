@@ -59,9 +59,9 @@ Secret Key: 5047f0a7f482f2347b442eefa06aad455cd5e5e7f70c6a730d5c163f95e34386
 
 ## Constraints
 
-- **Max 10 songs per playlist** (server-enforced via `MAX_TRACKS`)
+- **Max 15 songs per playlist** (server-enforced via `MAX_TRACKS`)
 - **128kbps MP3** (~3.5MB per song, ~1MB/min)
-- **~35MB per character** (10 songs × 3.5MB)
+- **~52MB per character** (15 songs × 3.5MB)
 - **R2 free tier**: 10GB storage, zero egress
 
 ## Project Structure

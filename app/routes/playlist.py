@@ -26,12 +26,14 @@ router = APIRouter()
 async def submit_playlist(
     data: PlaylistSubmit,
     background_tasks: BackgroundTasks,
-    db: aiosqlite.Connection = Depends(get_db)
+    db: aiosqlite.Connection = Depends(get_db),
+    refresh: bool = False
 ):
     """Submit a YouTube playlist URL for processing.
 
     If playlist is already cached, returns existing data.
     Otherwise, extracts metadata and queues for processing.
+    Use ?refresh=true to force re-fetch from YouTube.
     """
     # Extract playlist ID from URL
     playlist_id = extract_playlist_id(data.url)
@@ -40,7 +42,7 @@ async def submit_playlist(
 
     # Check if already cached
     existing = await get_playlist(db, playlist_id)
-    if existing:
+    if existing and not refresh:
         tracks = await get_tracks(db, playlist_id)
         return PlaylistResponse(
             id=existing.id,
@@ -49,6 +51,21 @@ async def submit_playlist(
             track_count=existing.track_count,
             tracks=tracks,
         )
+
+    # If refresh requested and playlist exists, delete old data
+    if existing and refresh:
+        from app.services.storage import delete_file
+        # Delete old tracks from R2 and DB
+        old_tracks = await get_tracks(db, playlist_id)
+        for track in old_tracks:
+            if track.r2_key:
+                try:
+                    await delete_file(track.r2_key)
+                except Exception:
+                    pass  # Ignore R2 deletion errors
+        await db.execute("DELETE FROM tracks WHERE playlist_id = ?", (playlist_id,))
+        await db.execute("DELETE FROM playlists WHERE id = ?", (playlist_id,))
+        await db.commit()
 
     # Extract playlist info from YouTube
     playlist_info = await extract_playlist_info(data.url)

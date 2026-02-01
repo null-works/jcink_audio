@@ -1,6 +1,5 @@
 import asyncio
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
-from fastapi.responses import RedirectResponse
 import aiosqlite
 
 from app.database import get_db
@@ -133,19 +132,18 @@ async def get_track_audio(
     track_id: str,
     db: aiosqlite.Connection = Depends(get_db)
 ):
-    """Get track audio - redirects to presigned R2 URL if ready."""
+    """Get track audio URL - returns direct R2 URL for CORS compatibility."""
     track = await get_track(db, track_id)
     if not track:
         raise HTTPException(status_code=404, detail="Track not found")
 
     if track.status != Status.COMPLETE or not track.r2_key:
-        # Track not ready yet
         raise HTTPException(
             status_code=202,
             detail="Track is still processing",
             headers={"Retry-After": "5"}
         )
 
-    # Generate presigned URL on-demand (valid for 1 hour)
-    presigned_url = get_public_url(track.r2_key)
-    return RedirectResponse(url=presigned_url, status_code=302)
+    # Return direct URL instead of redirect (better CORS support for Web Audio API)
+    public_url = get_public_url(track.r2_key)
+    return {"url": public_url}

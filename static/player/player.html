@@ -18,7 +18,7 @@
   <div id="player-list-wrap" class="player-list-wrap" style="display:none;">
     <ul id="player-list" class="player-list"></ul>
   </div>
-  <audio id="player-audio"></audio>
+  <audio id="player-audio" crossorigin="anonymous"></audio>
   <div class="player-footer-btns">
     <button id="player-refresh-btn" class="player-footer-btn" title="Refresh playlist from YouTube">Refresh</button>
     <button id="player-debug-btn" class="player-footer-btn">Debug</button>
@@ -182,13 +182,23 @@
     var t = tracks[idx];
     if (t.status !== 'complete') return;
     currentIndex = idx;
-    var trackUrl = API_BASE + '/api/track/' + t.id;
-    log('PLAY: ' + t.title + ' -> ' + trackUrl);
-    audio.src = trackUrl;
-    audio.play();
     titleEl.textContent = t.title;
-    playBtn.innerHTML = '&#10074;&#10074;';
     renderList();
+
+    // Fetch URL from API then play (CORS-compatible for Web Audio API)
+    var trackApiUrl = API_BASE + '/api/track/' + t.id;
+    log('PLAY: ' + t.title + ' -> ' + trackApiUrl);
+    fetch(trackApiUrl)
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        log('R2 URL: ' + data.url);
+        audio.src = data.url;
+        audio.play();
+        playBtn.innerHTML = '&#10074;&#10074;';
+      })
+      .catch(function(e) {
+        log('PLAY ERROR: ' + e.message);
+      });
   }
 
   function updateButtons() {

@@ -149,11 +149,13 @@ class TestPlaylistEndpoints:
                 )
                 await db.commit()
 
-            # Get track - should redirect to public URL
-            response = await client.get("/api/track/video1", follow_redirects=False)
+            # Get track - should return JSON with URL
+            response = await client.get("/api/track/video1")
 
-            assert response.status_code == 302
-            assert "media.imagehut.ch" in response.headers["location"]
+            assert response.status_code == 200
+            data = response.json()
+            assert "url" in data
+            assert "media.imagehut.ch" in data["url"]
 
     async def test_get_track_not_ready(self, client, test_db, mock_playlist_info):
         """Test getting track that hasn't been processed yet."""

@@ -1,5 +1,5 @@
 import asyncio
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request
 import aiosqlite
 
 from app.database import get_db
@@ -17,6 +17,7 @@ from app.models import (
 )
 from app.services import extract_playlist_id, extract_playlist_info, process_playlist
 from app.services.storage import get_public_url
+from app.services.ratelimit import check_refresh_allowed, record_refresh
 
 router = APIRouter()
 
@@ -24,6 +25,7 @@ router = APIRouter()
 @router.post("/playlist", response_model=PlaylistResponse)
 async def submit_playlist(
     data: PlaylistSubmit,
+    request: Request,
     background_tasks: BackgroundTasks,
     db: aiosqlite.Connection = Depends(get_db),
     refresh: bool = False
@@ -34,6 +36,9 @@ async def submit_playlist(
     Otherwise, extracts metadata and queues for processing.
     Use ?refresh=true to force re-fetch from YouTube.
     """
+    # Get client IP for rate limiting
+    client_ip = request.client.host if request.client else "unknown"
+
     # Extract playlist ID from URL
     playlist_id = extract_playlist_id(data.url)
     if not playlist_id:
@@ -51,6 +56,20 @@ async def submit_playlist(
             tracks=tracks,
         )
 
+    # If refresh requested, apply rate limiting and status checks
+    if refresh and existing:
+        # Check rate limits
+        allowed, reason = check_refresh_allowed(client_ip)
+        if not allowed:
+            raise HTTPException(status_code=429, detail=reason)
+
+        # Check if playlist is still processing (rule 2)
+        if existing.status in (Status.PENDING, Status.PROCESSING):
+            raise HTTPException(
+                status_code=409,
+                detail="Playlist is still processing. Wait for completion before refreshing."
+            )
+
     # If refresh requested and playlist exists, delete old data
     if existing and refresh:
         from app.services.storage import delete_file
@@ -65,6 +84,9 @@ async def submit_playlist(
         await db.execute("DELETE FROM tracks WHERE playlist_id = ?", (playlist_id,))
         await db.execute("DELETE FROM playlists WHERE id = ?", (playlist_id,))
         await db.commit()
+
+        # Record successful refresh for rate limiting
+        record_refresh(client_ip)
 
     # Extract playlist info from YouTube
     playlist_info = await extract_playlist_info(data.url)

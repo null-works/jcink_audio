@@ -128,12 +128,12 @@ class TestPlaylistEndpoints:
         assert response.status_code == 404
 
     async def test_get_track_redirect(self, client, test_db, mock_playlist_info):
-        """Test track redirect to presigned R2 URL."""
+        """Test track redirect to public R2 URL."""
         with patch("app.routes.playlist.extract_playlist_info", new_callable=AsyncMock) as mock_extract, \
              patch("app.routes.playlist.process_playlist", new_callable=AsyncMock), \
-             patch("app.routes.playlist.get_public_url") as mock_presign:
+             patch("app.routes.playlist.get_public_url") as mock_public_url:
             mock_extract.return_value = mock_playlist_info
-            mock_presign.return_value = "https://r2.example.com/presigned/audio/test.mp3?token=abc"
+            mock_public_url.return_value = "https://media.imagehut.ch/audio/PLtest123/video1.mp3"
 
             # Create playlist
             await client.post(
@@ -149,11 +149,11 @@ class TestPlaylistEndpoints:
                 )
                 await db.commit()
 
-            # Get track - should redirect to presigned URL
+            # Get track - should redirect to public URL
             response = await client.get("/api/track/video1", follow_redirects=False)
 
             assert response.status_code == 302
-            assert "presigned" in response.headers["location"]
+            assert "media.imagehut.ch" in response.headers["location"]
 
     async def test_get_track_not_ready(self, client, test_db, mock_playlist_info):
         """Test getting track that hasn't been processed yet."""

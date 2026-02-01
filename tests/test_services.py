@@ -171,17 +171,12 @@ class TestR2Storage:
         assert key == "audio/PLtest123/videoABC.mp3"
 
     def test_get_public_url(self):
-        """Test presigned URL generation."""
+        """Test public URL generation."""
         from app.services.storage import get_public_url
 
-        with patch("app.services.storage.get_r2_client") as mock_client:
-            mock_s3 = MagicMock()
-            mock_s3.generate_presigned_url.return_value = "https://r2.example.com/presigned?token=abc"
-            mock_client.return_value = mock_s3
-
-            url = get_public_url("audio/PLtest123/videoABC.mp3")
-            assert url.startswith("https://")
-            mock_s3.generate_presigned_url.assert_called_once()
+        url = get_public_url("audio/PLtest123/videoABC.mp3")
+        assert url.startswith("https://")
+        assert "audio/PLtest123/videoABC.mp3" in url
 
     async def test_upload_file_success(self, tmp_path):
         """Test successful file upload."""
@@ -193,7 +188,6 @@ class TestR2Storage:
 
         with patch("app.services.storage.get_r2_client") as mock_client:
             mock_s3 = MagicMock()
-            mock_s3.generate_presigned_url.return_value = "https://r2.example.com/presigned?token=abc"
             mock_client.return_value = mock_s3
 
             r2_key, r2_url = await upload_file(str(fake_mp3), "PLtest123", "videoABC")

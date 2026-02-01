@@ -23,21 +23,11 @@ def generate_r2_key(playlist_id: str, track_id: str) -> str:
 
 
 def get_public_url(r2_key: str) -> str:
-    """Generate presigned URL for an R2 object.
+    """Generate public URL for an R2 object.
 
-    Creates a temporary authenticated URL valid for 1 hour.
+    Uses the R2 custom domain for public access.
     """
-    try:
-        client = get_r2_client()
-        url = client.generate_presigned_url(
-            "get_object",
-            Params={"Bucket": settings.r2_bucket, "Key": r2_key},
-            ExpiresIn=3600  # 1 hour
-        )
-        return url
-    except ClientError:
-        # Fallback to direct URL (won't work without public access)
-        return f"{settings.r2_endpoint}/{settings.r2_bucket}/{r2_key}"
+    return f"{settings.r2_public_url}/{r2_key}"
 
 
 async def upload_file(

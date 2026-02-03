@@ -59,10 +59,28 @@ Secret Key: 5047f0a7f482f2347b442eefa06aad455cd5e5e7f70c6a730d5c163f95e34386
 
 ## Constraints
 
-- **Max 10 songs per playlist** (server-enforced via `MAX_TRACKS`)
+- **Max 15 songs per playlist** (server-enforced via `MAX_TRACKS`)
 - **128kbps MP3** (~3.5MB per song, ~1MB/min)
-- **~35MB per character** (10 songs × 3.5MB)
+- **~52MB per character** (15 songs × 3.5MB)
 - **R2 free tier**: 10GB storage, zero egress
+
+## Refresh Rate Limiting
+
+The refresh button has rate limiting to prevent abuse:
+
+| Rule | Description |
+|------|-------------|
+| 1 min cooldown | Same IP can only refresh once per minute |
+| Processing lock | Cannot refresh while playlist is still processing |
+| 3/day limit | Same IP can only refresh 3 times per day |
+| Admin bypass | IPs in `ADMIN_IPS` env var bypass all limits |
+
+**Configure admin whitelist** in Portainer:
+```
+- ADMIN_IPS=1.2.3.4,5.6.7.8
+```
+
+Rate limit data is stored in-memory (resets on container restart).
 
 ## Project Structure
 
@@ -88,7 +106,8 @@ jcink_audio/
 │       ├── __init__.py
 │       ├── youtube.py       # yt-dlp wrapper (extract + download)
 │       ├── storage.py       # R2 upload/delete/URL generation
-│       └── processor.py     # Background task (process_playlist)
+│       ├── processor.py     # Background task (process_playlist)
+│       └── ratelimit.py     # Refresh rate limiting by IP
 ├── static/
 │   └── player/
 │       └── player.html      # Monolithic player widget (HTML+CSS+JS)

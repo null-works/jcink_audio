@@ -18,8 +18,11 @@
   <div id="player-list-wrap" class="player-list-wrap" style="display:none;">
     <ul id="player-list" class="player-list"></ul>
   </div>
-  <audio id="player-audio"></audio>
-  <button id="player-debug-btn" class="player-debug-btn">Debug</button>
+  <audio id="player-audio" crossorigin="anonymous"></audio>
+  <div class="player-footer-btns">
+    <button id="player-refresh-btn" class="player-footer-btn" title="Refresh playlist from YouTube">Refresh</button>
+    <button id="player-debug-btn" class="player-footer-btn">Debug</button>
+  </div>
   <div id="player-debug" class="player-debug" style="display:none;">
     <pre id="player-log"></pre>
   </div>
@@ -70,8 +73,11 @@
 .player-list li.pending::after { content: " (loading)"; }
 .player-list li.error { color: #900; text-decoration: line-through; }
 
-.player-debug-btn { width: 100%; margin-top: 10px; padding: 5px; font-size: 10px; border: 1px solid var(--player-border); background: var(--player-bg); color: var(--player-muted); cursor: pointer; }
-.player-debug-btn:hover { background: var(--player-muted); color: var(--player-bg); }
+.player-footer-btns { display: flex; gap: 5px; margin-top: 10px; }
+.player-footer-btn { flex: 1; padding: 5px; font-size: 10px; border: 1px solid var(--player-border); background: var(--player-bg); color: var(--player-muted); cursor: pointer; }
+.player-footer-btn:hover { background: var(--player-muted); color: var(--player-bg); }
+.player-footer-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.player-footer-btn:disabled:hover { background: var(--player-bg); color: var(--player-muted); }
 .player-debug { margin-top: 5px; border: 1px solid var(--player-border); background: #111; color: #0f0; max-height: 200px; overflow-y: auto; }
 .player-debug pre { margin: 0; padding: 5px; font-size: 9px; white-space: pre-wrap; word-break: break-all; font-family: monospace; }
 </style>
@@ -95,6 +101,7 @@
   var listWrap = document.getElementById('player-list-wrap');
   var listEl = document.getElementById('player-list');
   var audio = document.getElementById('player-audio');
+  var refreshBtn = document.getElementById('player-refresh-btn');
   var debugBtn = document.getElementById('player-debug-btn');
   var debugPanel = document.getElementById('player-debug');
   var logEl = document.getElementById('player-log');
@@ -115,6 +122,15 @@
     debugVisible = !debugVisible;
     debugPanel.style.display = debugVisible ? 'block' : 'none';
     debugBtn.textContent = debugVisible ? 'Hide Debug' : 'Debug';
+  });
+
+  refreshBtn.addEventListener('click', function() {
+    if (refreshBtn.disabled) return;
+    refreshBtn.disabled = true;
+    refreshBtn.textContent = 'Refreshing...';
+    audio.pause();
+    audio.src = '';
+    loadPlaylist(true);
   });
 
   function formatTime(s) {
@@ -166,13 +182,23 @@
     var t = tracks[idx];
     if (t.status !== 'complete') return;
     currentIndex = idx;
-    var trackUrl = API_BASE + '/api/track/' + t.id;
-    log('PLAY: ' + t.title + ' -> ' + trackUrl);
-    audio.src = trackUrl;
-    audio.play();
     titleEl.textContent = t.title;
-    playBtn.innerHTML = '&#10074;&#10074;';
     renderList();
+
+    // Fetch URL from API then play (CORS-compatible for Web Audio API)
+    var trackApiUrl = API_BASE + '/api/track/' + t.id;
+    log('PLAY: ' + t.title + ' -> ' + trackApiUrl);
+    fetch(trackApiUrl)
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        log('R2 URL: ' + data.url);
+        audio.src = data.url;
+        audio.play();
+        playBtn.innerHTML = '&#10074;&#10074;';
+      })
+      .catch(function(e) {
+        log('PLAY ERROR: ' + e.message);
+      });
   }
 
   function updateButtons() {
@@ -187,9 +213,9 @@
     nextBtn.disabled = !hasNext;
   }
 
-  function loadPlaylist() {
-    setStatus('Loading playlist...');
-    var url = API_BASE + '/api/playlist';
+  function loadPlaylist(forceRefresh) {
+    setStatus(forceRefresh ? 'Refreshing playlist...' : 'Loading playlist...');
+    var url = API_BASE + '/api/playlist' + (forceRefresh ? '?refresh=true' : '');
     log('POST ' + url);
     log('Body: ' + JSON.stringify({ url: PLAYLIST_URL }));
     fetch(url, {
@@ -227,6 +253,10 @@
     .catch(function(e) {
       log('FETCH ERROR: ' + e.message);
       setStatus('Error: ' + e.message, true);
+    })
+    .finally(function() {
+      refreshBtn.disabled = false;
+      refreshBtn.textContent = 'Refresh';
     });
   }
 

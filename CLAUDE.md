@@ -1,280 +1,127 @@
-# YouTube Audio Cache for Jcink Roleplay Forum
+# CLAUDE.md - YouTube Audio Cache for Jcink
 
-## Project Status: COMPLETE ✅
+YouTube playlist to MP3 converter. FastAPI backend extracts audio via yt-dlp, uploads to Cloudflare R2, serves via embeddable HTML5 player widget for Jcink roleplay forums.
 
-Fully functional YouTube playlist to MP3 converter. Server extracts audio via yt-dlp → uploads to Cloudflare R2 → serves via embeddable HTML5 player widget.
+## Quick Reference
 
-## Live URLs
+```bash
+# Run tests
+python3 -m pytest -v
 
-| Service | URL |
-|---------|-----|
-| API | `https://audio.imagehut.ch` |
-| Audio CDN | `https://media.imagehut.ch` |
-| Player | `https://audio.imagehut.ch/static/player/player.html` |
-| Health Check | `https://audio.imagehut.ch/health` |
+# Run locally (requires env vars below)
+uvicorn app.main:app --reload --port 8000
+
+# Build container
+docker build -t audio-cache .
+```
+
+## Required Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `R2_ENDPOINT` | Cloudflare R2 S3-compatible endpoint URL |
+| `R2_BUCKET` | R2 bucket name (`imagehut-media`) |
+| `R2_ACCESS_KEY` | R2 access key ID |
+| `R2_SECRET_KEY` | R2 secret access key |
+| `R2_PUBLIC_URL` | Public CDN domain (default: `https://media.imagehut.ch`) |
+| `MAX_TRACKS` | Max tracks per playlist (default: `15`) |
+| `AUDIO_BITRATE` | ffmpeg MP3 bitrate (default: `128k`) |
+| `DATABASE_PATH` | SQLite file path (default: `/app/data/cache.db`) |
+| `ADMIN_IPS` | Comma-separated IPs that bypass rate limits (optional) |
+
+Tests set their own env vars in `tests/conftest.py` - no external config needed.
 
 ## Architecture
 
 ```
-┌─────────────────┐     ┌──────────────────────┐     ┌───────────────────┐
-│  Jcink Forum    │────▶│  audio.imagehut.ch   │────▶│  media.imagehut.ch │
-│  (embed widget) │     │  (FastAPI on VPS)    │     │  (R2 CDN)          │
-└─────────────────┘     └──────────────────────┘     └───────────────────┘
-                               │
-                               ▼
-                        ┌──────────────┐
-                        │   yt-dlp     │
-                        │  (subprocess)│
-                        └──────────────┘
+Jcink Forum (embed) --> audio.imagehut.ch (FastAPI) --> media.imagehut.ch (R2 CDN)
+                                |
+                            yt-dlp (subprocess)
 ```
 
-**Data flow:**
-1. Player JS posts YouTube playlist URL to `/api/playlist`
-2. API extracts metadata via yt-dlp, creates DB records
-3. Background task downloads each track, converts to 128kbps MP3
-4. Uploads to R2 at `audio/{playlist_id}/{track_id}.mp3`
-5. Player polls `/api/playlist/{id}` until tracks complete
-6. Audio plays via `/api/track/{id}` which redirects to R2 CDN
-
-## Infrastructure
-
-| Component | Status | Details |
-|-----------|--------|---------|
-| VPS | ✅ | Ubuntu + Portainer at `sys.inklit.ch` |
-| API Domain | ✅ | `audio.imagehut.ch` → nginx → port 8942 |
-| CDN Domain | ✅ | `media.imagehut.ch` → R2 custom domain |
-| SSL | ✅ | Certbot/Let's Encrypt |
-| R2 Bucket | ✅ | `imagehut-media` on Cloudflare |
-| Container | ✅ | `audio-cache` via Portainer |
-
-## R2 Credentials
-
-```
-Endpoint: https://5215ebbf6291827b415632f0cd0eae79.r2.cloudflarestorage.com
-Bucket: imagehut-media
-Public URL: https://media.imagehut.ch
-Access Key: b6cf7481eae8fddbd2abfd9762246606
-Secret Key: 5047f0a7f482f2347b442eefa06aad455cd5e5e7f70c6a730d5c163f95e34386
-```
-
-## Constraints
-
-- **Max 15 songs per playlist** (server-enforced via `MAX_TRACKS`)
-- **128kbps MP3** (~3.5MB per song, ~1MB/min)
-- **~52MB per character** (15 songs × 3.5MB)
-- **R2 free tier**: 10GB storage, zero egress
-
-## Refresh Rate Limiting
-
-The refresh button has rate limiting to prevent abuse:
-
-| Rule | Description |
-|------|-------------|
-| 1 min cooldown | Same IP can only refresh once per minute |
-| Processing lock | Cannot refresh while playlist is still processing |
-| 3/day limit | Same IP can only refresh 3 times per day |
-| Admin bypass | IPs in `ADMIN_IPS` env var bypass all limits |
-
-**Configure admin whitelist** in Portainer:
-```
-- ADMIN_IPS=1.2.3.4,5.6.7.8
-```
-
-Rate limit data is stored in-memory (resets on container restart).
+**Flow:** Player POSTs playlist URL -> API extracts metadata via yt-dlp -> creates DB records -> background task downloads each track as 128kbps MP3 -> uploads to R2 -> player polls until complete -> audio streams from R2 CDN.
 
 ## Project Structure
 
 ```
-jcink_audio/
-├── Dockerfile
-├── docker-compose.yml
-├── requirements.txt
-├── pytest.ini
-├── app/
-│   ├── __init__.py
-│   ├── main.py              # FastAPI app, mounts routes + static
-│   ├── config.py            # Pydantic settings from env vars
-│   ├── database.py          # SQLite async connection + init
-│   ├── models/
-│   │   ├── __init__.py
-│   │   ├── playlist.py      # Pydantic schemas (Status, Track, Playlist)
-│   │   └── operations.py    # CRUD operations (get/create/update)
-│   ├── routes/
-│   │   ├── __init__.py
-│   │   └── playlist.py      # API endpoints
-│   └── services/
-│       ├── __init__.py
-│       ├── youtube.py       # yt-dlp wrapper (extract + download)
-│       ├── storage.py       # R2 upload/delete/URL generation
-│       ├── processor.py     # Background task (process_playlist)
-│       └── ratelimit.py     # Refresh rate limiting by IP
-├── static/
-│   └── player/
-│       └── player.html      # Monolithic player widget (HTML+CSS+JS)
-└── tests/
-    ├── conftest.py          # Fixtures, test DB setup
-    ├── test_api.py          # API endpoint tests
-    ├── test_database.py     # CRUD operation tests
-    └── test_services.py     # Service layer tests
+app/
+  main.py            # FastAPI app, lifespan, mounts routes + static
+  config.py          # Pydantic BaseSettings (env var loading)
+  database.py        # SQLite via aiosqlite, table init on startup
+  models/
+    playlist.py      # Pydantic schemas: Status enum, Track, Playlist
+    operations.py    # All CRUD: get/create/update for playlists & tracks
+  routes/
+    playlist.py      # 4 endpoints (health, submit, status, track)
+  services/
+    youtube.py       # yt-dlp wrapper: extract_playlist_info, download_track
+    storage.py       # R2/boto3: upload, delete, URL generation
+    processor.py     # BackgroundTasks: process_playlist, process_track
+    ratelimit.py     # In-memory IP rate limiting for refresh
+static/
+  player/
+    player.html      # Monolithic player widget (HTML + CSS + JS in one file)
+tests/
+  conftest.py        # Fixtures: test DB, async client, env var setup
+  test_api.py        # API integration tests
+  test_database.py   # CRUD operation tests
+  test_services.py   # Service layer tests (mocked externals)
 ```
 
 ## API Endpoints
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/health` | Health check, returns `{"status":"ok"}` |
-| POST | `/api/playlist` | Submit playlist URL, returns playlist + tracks |
-| GET | `/api/playlist/{id}` | Get playlist status and track list |
-| GET | `/api/track/{id}` | Redirect to R2 CDN URL for audio |
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/health` | Returns `{"status":"ok"}` |
+| `POST` | `/api/playlist` | Submit YouTube playlist URL. Body: `{"url": "..."}`. Query: `?refresh=true` |
+| `GET` | `/api/playlist/{id}` | Get playlist status + track list |
+| `GET` | `/api/track/{id}` | Returns `{"url": "..."}` with R2 CDN link (202 if still processing) |
 
-### Example: Submit Playlist
-```bash
-curl -X POST https://audio.imagehut.ch/api/playlist \
-  -H "Content-Type: application/json" \
-  -d '{"url":"https://www.youtube.com/playlist?list=PLxxxxxxx"}'
-```
+## Key Technical Details
 
-### Example: Check Status
-```bash
-curl https://audio.imagehut.ch/api/playlist/PLxxxxxxx
-```
+### yt-dlp JSONL parsing
+`--flat-playlist --dump-json` outputs one JSON object **per line** (JSONL), NOT a single JSON with an `entries` array. Parsed line-by-line in `app/services/youtube.py`. This is a common gotcha.
 
-## Player Widget
+### Async-first design
+All DB operations use `aiosqlite`. yt-dlp runs via `asyncio.create_subprocess_exec`. R2 uploads use boto3 (sync, but called from background tasks).
 
-Located at `static/player/player.html`. Monolithic file with HTML, CSS, JS.
+### Background processing
+`FastAPI.BackgroundTasks` processes tracks sequentially after the initial POST returns. Tracks go through: `pending -> processing -> complete/error`. Playlist is `complete` only when ALL tracks succeed.
 
-### CSS Variables (for theming)
-```css
-.audio-player {
-  --player-bg: #fff;       /* background */
-  --player-text: #000;     /* text color */
-  --player-border: #000;   /* borders */
-  --player-accent: #000;   /* buttons, progress, active track */
-  --player-muted: #666;    /* secondary text */
-}
-```
+### R2 storage keys
+Format: `audio/{playlist_id}/{track_id}.mp3`. Public URLs use custom domain (`media.imagehut.ch`) instead of presigned URLs.
 
-### JS Config (lines 81-82)
-```javascript
-var PLAYLIST_URL = "https://www.youtube.com/playlist?list=...";  // TODO: make dynamic
-var API_BASE = "https://audio.imagehut.ch";
-```
+### Database
+SQLite with two tables: `playlists` and `tracks`. Auto-created on startup in `database.py`. Uses `aiosqlite.Row` row factory for dict-like access.
 
-### Features
-- Prev/Play/Next controls
-- Progress bar with seek
-- Track list with status indicators
-- Auto-advances to next track
-- Polls server while tracks processing
-- Debug panel (toggle via button)
+### Rate limiting (refresh)
+In-memory dict tracking per-IP: 1 min cooldown between refreshes, max 3/day, blocked during processing. Resets on container restart. Admin IPs bypass via `ADMIN_IPS` env var.
+
+### Player widget
+`static/player/player.html` is a single monolithic file (HTML+CSS+JS). Config is hardcoded at lines ~87-88 (`PLAYLIST_URL`, `API_BASE`). Themeable via CSS variables on `.audio-player`.
+
+## Conventions
+
+- **Async everywhere** - use `async def` for route handlers and DB operations
+- **Pydantic for validation** - schemas in `models/playlist.py`, settings in `config.py`
+- **Status enums** - track and playlist status: `pending`, `processing`, `complete`, `error`
+- **Error handling** - HTTP exceptions in routes (400/404/409/429), try-except around external calls in services
+- **Tests mock externals** - yt-dlp and boto3 are mocked in tests, DB uses in-memory SQLite
+- **No ORM** - raw SQL queries in `models/operations.py`
 
 ## Deployment
 
-### Initial Deploy
+Runs in Docker on a VPS via Portainer. Nginx reverse proxies `audio.imagehut.ch` to container port 8942. R2 CDN at `media.imagehut.ch`. SSL via Certbot.
+
 ```bash
-# On VPS
-mkdir -p /opt/youtube-cache/data
-chmod 755 /opt/youtube-cache/data
-git clone -b main https://github.com/null-works/jcink_audio.git /opt/youtube-cache/app
-cd /opt/youtube-cache/app
-docker build -t audio-cache .
+# Update deploy
+cd /opt/youtube-cache/app && git pull && docker build -t audio-cache .
+# Then redeploy stack in Portainer (turn OFF "Re-pull image" - it's a local build)
 ```
 
-Then in Portainer, create stack with:
-```yaml
-services:
-  audio-cache:
-    image: audio-cache
-    container_name: audio-cache
-    restart: unless-stopped
-    ports:
-      - "8942:8000"
-    volumes:
-      - /opt/youtube-cache/data:/app/data
-    environment:
-      - R2_ENDPOINT=https://5215ebbf6291827b415632f0cd0eae79.r2.cloudflarestorage.com
-      - R2_BUCKET=imagehut-media
-      - R2_ACCESS_KEY=b6cf7481eae8fddbd2abfd9762246606
-      - R2_SECRET_KEY=5047f0a7f482f2347b442eefa06aad455cd5e5e7f70c6a730d5c163f95e34386
-      - R2_PUBLIC_URL=https://media.imagehut.ch
-      - MAX_TRACKS=10
-      - AUDIO_BITRATE=128k
-      - DATABASE_PATH=/app/data/cache.db
-```
+## Outstanding TODOs
 
-**Important**: Turn OFF "Re-pull image" toggle (it's a local image).
-
-### Update Deploy
-```bash
-cd /opt/youtube-cache/app
-git pull
-docker build -t audio-cache .
-# Then redeploy stack in Portainer
-```
-
-## Development
-
-### Run Tests
-```bash
-python3 -m pytest -v
-```
-
-### Run Locally
-```bash
-export R2_ENDPOINT=https://5215ebbf6291827b415632f0cd0eae79.r2.cloudflarestorage.com
-export R2_BUCKET=imagehut-media
-export R2_ACCESS_KEY=b6cf7481eae8fddbd2abfd9762246606
-export R2_SECRET_KEY=5047f0a7f482f2347b442eefa06aad455cd5e5e7f70c6a730d5c163f95e34386
-export R2_PUBLIC_URL=https://media.imagehut.ch
-export DATABASE_PATH=./data/cache.db
-
-uvicorn app.main:app --reload --port 8000
-```
-
-### Debug Commands
-```bash
-# Check container logs
-docker logs -f audio-cache
-
-# List files in R2
-docker exec audio-cache python3 -c "
-from app.services.storage import get_r2_client
-from app.config import settings
-client = get_r2_client()
-result = client.list_objects_v2(Bucket=settings.r2_bucket, Prefix='audio/')
-for obj in result.get('Contents', []):
-    print(obj['Key'])
-"
-
-# Test yt-dlp inside container
-docker exec audio-cache yt-dlp --version
-docker exec audio-cache yt-dlp --flat-playlist --dump-json "https://www.youtube.com/playlist?list=PLxxxxx"
-```
-
-## Key Implementation Details
-
-### yt-dlp Output Parsing
-yt-dlp `--flat-playlist --dump-json` outputs JSONL (one JSON object per line), not a single JSON with `entries` array. See `app/services/youtube.py:76-114`.
-
-### Background Processing
-Uses FastAPI's `BackgroundTasks` to process tracks after returning response. See `app/services/processor.py`.
-
-### R2 URL Generation
-Uses public R2 custom domain (`media.imagehut.ch`) instead of presigned URLs. See `app/services/storage.py:25-30`.
-
-### Database
-SQLite via aiosqlite. Tables: `playlists`, `tracks`. Auto-created on startup. See `app/database.py`.
-
-## TODO (for Jcink integration)
-
-- [ ] Remove Debug button from player for production
-- [ ] Make PLAYLIST_URL dynamic (read from Jcink custom field)
-- [ ] Style player to match forum theme
-- [ ] Handle multiple players on same page (unique IDs)
-
-## Contact
-
-User is Kyle, IT support professional. Prefers:
-- Direct, practical solutions
-- Minimal fluff
-- Working code over explanations
+- Remove debug button from player for production
+- Make `PLAYLIST_URL` dynamic (read from Jcink custom field)
+- Style player to match forum theme
+- Handle multiple players on same page (unique IDs)

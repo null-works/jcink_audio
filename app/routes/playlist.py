@@ -46,15 +46,27 @@ async def submit_playlist(
 
     # Check if already cached
     existing = await get_playlist(db, playlist_id)
-    if existing and not refresh:
-        tracks = await get_tracks(db, playlist_id)
+    existing_tracks = await get_tracks(db, playlist_id) if existing else []
+
+    # Detect stuck/broken state: playlist exists but has no tracks
+    # This can happen if extraction succeeded but track creation was interrupted
+    is_broken = existing and len(existing_tracks) == 0
+
+    if existing and not refresh and not is_broken:
         return PlaylistResponse(
             id=existing.id,
             url=existing.url,
             status=existing.status,
             track_count=existing.track_count,
-            tracks=tracks,
+            tracks=existing_tracks,
         )
+
+    # If broken, clean up the stale record so we can re-create it below
+    if is_broken:
+        await db.execute("DELETE FROM tracks WHERE playlist_id = ?", (playlist_id,))
+        await db.execute("DELETE FROM playlists WHERE id = ?", (playlist_id,))
+        await db.commit()
+        existing = None
 
     # If refresh requested, apply rate limiting and status checks
     if refresh and existing:

@@ -44,7 +44,10 @@ def _get_ip_data(ip: str) -> dict:
 
 def is_admin(ip: str) -> bool:
     """Check if IP is in admin whitelist."""
-    return ip in settings.admin_ips
+    if not settings.admin_ips:
+        return False
+    admin_list = [x.strip() for x in settings.admin_ips.split(",") if x.strip()]
+    return ip in admin_list
 
 
 def check_refresh_allowed(ip: str) -> Tuple[bool, str]:

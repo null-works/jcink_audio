@@ -1,4 +1,3 @@
-from typing import List
 from pydantic_settings import BaseSettings
 
 
@@ -11,7 +10,7 @@ class Settings(BaseSettings):
     max_tracks: int = 15
     audio_bitrate: str = "128k"
     database_path: str = "/app/data/cache.db"
-    admin_ips: List[str] = []  # Comma-separated in env: ADMIN_IPS=1.2.3.4,5.6.7.8
+    admin_ips: str = ""  # Comma-separated in env: ADMIN_IPS=1.2.3.4,5.6.7.8
 
     class Config:
         env_prefix = ""

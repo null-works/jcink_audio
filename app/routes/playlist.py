@@ -48,9 +48,13 @@ async def submit_playlist(
     existing = await get_playlist(db, playlist_id)
     existing_tracks = await get_tracks(db, playlist_id) if existing else []
 
-    # Detect stuck/broken state: playlist exists but has no tracks
+    # Detect stuck/broken state: playlist exists but has no tracks and is not actively processing
     # This can happen if extraction succeeded but track creation was interrupted
-    is_broken = existing and len(existing_tracks) == 0
+    is_broken = (
+        existing
+        and len(existing_tracks) == 0
+        and existing.status not in (Status.PENDING, Status.PROCESSING)
+    )
 
     if existing and not refresh and not is_broken:
         return PlaylistResponse(

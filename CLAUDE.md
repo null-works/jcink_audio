@@ -145,4 +145,3 @@ The VPS is a Proxmox LXC container. If the server becomes unreachable after a ha
 - Make `PLAYLIST_URL` dynamic (read from Jcink custom field)
 - Style player to match forum theme
 - Handle multiple players on same page (unique IDs)
-- Update `docker-compose.yml` data volume path from `/opt/youtube-cache/data` to match new app location

@@ -17,7 +17,8 @@ from app.models import (
 )
 from app.services import extract_playlist_id, extract_playlist_info, process_playlist
 from app.services.storage import get_public_url
-from app.services.ratelimit import check_refresh_allowed, record_refresh
+# Rate limiting disabled for testing
+# from app.services.ratelimit import check_refresh_allowed, record_refresh
 
 router = APIRouter()
 
@@ -36,9 +37,6 @@ async def submit_playlist(
     Otherwise, extracts metadata and queues for processing.
     Use ?refresh=true to force re-fetch from YouTube.
     """
-    # Get client IP for rate limiting
-    client_ip = request.client.host if request.client else "unknown"
-
     # Extract playlist ID from URL
     playlist_id = extract_playlist_id(data.url)
     if not playlist_id:
@@ -72,14 +70,8 @@ async def submit_playlist(
         await db.commit()
         existing = None
 
-    # If refresh requested, apply rate limiting and status checks
+    # If refresh requested, check if playlist is still processing
     if refresh and existing:
-        # Check rate limits
-        allowed, reason = check_refresh_allowed(client_ip)
-        if not allowed:
-            raise HTTPException(status_code=429, detail=reason)
-
-        # Check if playlist is still processing (rule 2)
         if existing.status in (Status.PENDING, Status.PROCESSING):
             raise HTTPException(
                 status_code=409,
@@ -101,8 +93,8 @@ async def submit_playlist(
         await db.execute("DELETE FROM playlists WHERE id = ?", (playlist_id,))
         await db.commit()
 
-        # Record successful refresh for rate limiting
-        record_refresh(client_ip)
+        # Rate limiting disabled for testing
+        # record_refresh(client_ip)
 
     # Extract playlist info from YouTube
     playlist_info = await extract_playlist_info(data.url)

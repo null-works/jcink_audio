@@ -17,7 +17,7 @@ async def get_playlist(db: aiosqlite.Connection, playlist_id: str) -> Playlist |
 async def create_playlist(db: aiosqlite.Connection, playlist_id: str, url: str) -> Playlist:
     """Create a new playlist."""
     await db.execute(
-        "INSERT INTO playlists (id, url, status) VALUES (?, ?, ?)",
+        "INSERT OR REPLACE INTO playlists (id, url, status) VALUES (?, ?, ?)",
         (playlist_id, url, Status.PENDING.value)
     )
     await db.commit()
@@ -66,7 +66,7 @@ async def create_track(
 ) -> Track:
     """Create a new track."""
     await db.execute(
-        """INSERT INTO tracks (id, playlist_id, title, duration, position, status)
+        """INSERT OR REPLACE INTO tracks (id, playlist_id, title, duration, position, status)
            VALUES (?, ?, ?, ?, ?, ?)""",
         (track_id, playlist_id, title, duration, position, Status.PENDING.value)
     )

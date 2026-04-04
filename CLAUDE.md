@@ -79,8 +79,14 @@ tests/
 
 ## Key Technical Details
 
+### YouTube URL normalization
+All playlist URLs are normalized to `https://www.youtube.com/playlist?list={id}` before passing to yt-dlp. This handles `music.youtube.com` URLs and strips tracking parameters like `&si=`. The normalization happens in `extract_playlist_info()` in `app/services/youtube.py`.
+
 ### yt-dlp JSONL parsing
 `--flat-playlist --dump-json` outputs one JSON object **per line** (JSONL), NOT a single JSON with an `entries` array. Parsed line-by-line in `app/services/youtube.py`. This is a common gotcha.
+
+### Stuck playlist recovery
+The submit endpoint detects playlists stuck with 0 tracks (from interrupted extraction) and automatically cleans up the stale DB records to allow re-extraction. DB inserts use `INSERT OR REPLACE` to handle duplicate track IDs from prior failed attempts.
 
 ### Async-first design
 All DB operations use `aiosqlite`. yt-dlp runs via `asyncio.create_subprocess_exec`. R2 uploads use boto3 (sync, but called from background tasks).
@@ -111,13 +117,27 @@ In-memory dict tracking per-IP: 1 min cooldown between refreshes, max 3/day, blo
 
 ## Deployment
 
-Runs in Docker on a VPS via Portainer. Nginx reverse proxies `audio.imagehut.ch` to container port 8942. R2 CDN at `media.imagehut.ch`. SSL via Certbot.
+**VPS:** `sys.inklit.ch` (Proxmox LXC container). SSH as root.
+
+**App location:** `~/jcink_audio` on the server (previously `/opt/youtube-cache/app`, now migrated).
+
+**Stack:** Docker container (`audio-cache`), managed via `docker compose`. Nginx reverse proxies `audio.imagehut.ch` to container port 8942. R2 CDN at `media.imagehut.ch`. SSL via Certbot.
+
+**SQLite data volume:** Mounted from `/opt/youtube-cache/data:/app/data` (see `docker-compose.yml`).
 
 ```bash
 # Update deploy
-cd /opt/youtube-cache/app && git pull && docker build -t audio-cache .
-# Then redeploy stack in Portainer (turn OFF "Re-pull image" - it's a local build)
+cd ~/jcink_audio && git pull && docker build -t audio-cache . && docker rm -f audio-cache && docker compose up -d
+
+# Verify the build picked up changes (Docker layer caching can serve stale code)
+docker exec audio-cache cat /app/app/<file-to-check>
 ```
+
+### Docker build caching gotcha
+Docker's `COPY app/ ./app/` layer can cache stale code even after `git pull`. If `docker exec` shows old code in the container, run `docker builder prune -f` before rebuilding. Avoid `docker build --no-cache` on low-memory VPS — it rebuilds all layers (including apt-get and pip install) and can OOM the server.
+
+### VPS recovery notes
+The VPS is a Proxmox LXC container. If the server becomes unreachable after a hard reboot, use the VPS provider's web console (not SSH). The network interface is `eth0` (not `venet0`). If SSH fails from your local machine after a reboot, the host key may have changed — clear it with `ssh-keygen -R inklit.ch` and reconnect.
 
 ## Outstanding TODOs
 

@@ -56,6 +56,10 @@ async def extract_playlist_info(url: str) -> PlaylistInfo | None:
     if not playlist_id:
         return None
 
+    # Normalize to canonical YouTube URL to avoid issues with music.youtube.com
+    # and tracking parameters like &si=
+    canonical_url = f"https://www.youtube.com/playlist?list={playlist_id}"
+
     try:
         # Use yt-dlp to get playlist metadata without downloading
         process = await asyncio.create_subprocess_exec(
@@ -63,7 +67,7 @@ async def extract_playlist_info(url: str) -> PlaylistInfo | None:
             "--flat-playlist",
             "--dump-json",
             "--no-warnings",
-            url,
+            canonical_url,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )

@@ -236,24 +236,24 @@ async def find_youtube_match(track: SpotifyTrack) -> dict | None:
 async def extract_spotify_playlist_info(url: str) -> PlaylistInfo | None:
     """Fetch a Spotify playlist and resolve each track to a YouTube video.
 
-    Returns None if playlist can't be fetched or no tracks can be resolved.
-    Missing tracks (no YouTube match found) are silently skipped.
+    Raises exceptions with clear messages on failure. Missing tracks
+    (no YouTube match found) are silently skipped.
     """
     playlist_id = extract_spotify_playlist_id(url)
     if not playlist_id:
-        logger.warning("Could not extract Spotify playlist ID from %r", url)
-        return None
+        raise ValueError(f"Could not extract Spotify playlist ID from URL")
 
     logger.info("Fetching Spotify playlist %s", playlist_id)
     try:
         spotify_tracks = await get_spotify_playlist_tracks(playlist_id)
     except Exception as e:
-        logger.exception("Spotify API call failed for playlist %s: %s", playlist_id, e)
-        return None
+        logger.exception("Spotify API call failed for playlist %s", playlist_id)
+        raise RuntimeError(f"Spotify API error: {type(e).__name__}: {e}") from e
 
     if not spotify_tracks:
-        logger.warning("Spotify playlist %s returned 0 tracks", playlist_id)
-        return None
+        raise RuntimeError(
+            f"Spotify playlist {playlist_id} is empty or inaccessible"
+        )
 
     logger.info(
         "Spotify playlist %s has %d tracks, resolving to YouTube...",
@@ -266,12 +266,14 @@ async def extract_spotify_playlist_info(url: str) -> PlaylistInfo | None:
 
     # Resolve each Spotify track to a YouTube video
     resolved: list[TrackInfo] = []
+    unmatched: list[str] = []
     for idx, sp_track in enumerate(spotify_tracks):
         match = await find_youtube_match(sp_track)
         if not match:
             logger.warning(
                 "No YouTube match for %r by %r", sp_track.title, sp_track.artist
             )
+            unmatched.append(f"{sp_track.artist} - {sp_track.title}")
             continue
         logger.info(
             "Matched %r by %r -> %s", sp_track.title, sp_track.artist, match.get("id")
@@ -286,10 +288,11 @@ async def extract_spotify_playlist_info(url: str) -> PlaylistInfo | None:
         )
 
     if not resolved:
-        logger.warning(
-            "No tracks could be resolved to YouTube for playlist %s", playlist_id
+        sample = ", ".join(unmatched[:3])
+        raise RuntimeError(
+            f"No YouTube matches found for any of {len(spotify_tracks)} tracks "
+            f"(e.g. {sample}). yt-dlp search may be broken or rate-limited."
         )
-        return None
 
     logger.info(
         "Resolved %d/%d Spotify tracks to YouTube videos",

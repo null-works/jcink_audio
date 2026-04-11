@@ -104,7 +104,10 @@ async def submit_playlist(
         # record_refresh(client_ip)
 
     # Extract playlist info (YouTube or Spotify)
-    playlist_info = await resolve_playlist_info(data.url)
+    try:
+        playlist_info = await resolve_playlist_info(data.url)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Extraction failed: {e}")
     if not playlist_info:
         raise HTTPException(status_code=400, detail="Failed to extract playlist info")
 

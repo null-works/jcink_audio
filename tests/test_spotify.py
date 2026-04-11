@@ -213,27 +213,27 @@ class TestExtractSpotifyPlaylistInfo:
         assert len(result.tracks) == 1
         assert result.tracks[0].id == "yt_found"
 
-    async def test_returns_none_if_empty_playlist(self):
+    async def test_raises_on_empty_playlist(self):
         with patch(
             "app.services.spotify.get_spotify_playlist_tracks",
             new_callable=AsyncMock,
         ) as mock_fetch:
             mock_fetch.return_value = []
-            result = await extract_spotify_playlist_info(
-                "https://open.spotify.com/playlist/abc123"
-            )
-        assert result is None
+            with pytest.raises(RuntimeError, match="empty or inaccessible"):
+                await extract_spotify_playlist_info(
+                    "https://open.spotify.com/playlist/abc123"
+                )
 
-    async def test_returns_none_on_fetch_error(self):
+    async def test_raises_on_fetch_error(self):
         with patch(
             "app.services.spotify.get_spotify_playlist_tracks",
             new_callable=AsyncMock,
         ) as mock_fetch:
             mock_fetch.side_effect = Exception("API error")
-            result = await extract_spotify_playlist_info(
-                "https://open.spotify.com/playlist/abc123"
-            )
-        assert result is None
+            with pytest.raises(RuntimeError, match="Spotify API error"):
+                await extract_spotify_playlist_info(
+                    "https://open.spotify.com/playlist/abc123"
+                )
 
     async def test_respects_max_tracks_limit(self):
         from app.config import settings

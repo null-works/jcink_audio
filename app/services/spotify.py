@@ -8,12 +8,15 @@ Resolves a Spotify playlist URL to YouTube video IDs:
 
 import asyncio
 import json
+import logging
 import re
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
 from app.config import settings
 from app.services.youtube import PlaylistInfo, TrackInfo
+
+logger = logging.getLogger(__name__)
 
 
 # Penalty keywords commonly found in bad YouTube matches
@@ -176,8 +179,14 @@ async def _search_youtube(query: str) -> list[dict]:
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
-    stdout, _ = await process.communicate()
+    stdout, stderr = await process.communicate()
     if process.returncode != 0:
+        logger.warning(
+            "yt-dlp search failed for %r (code=%s): %s",
+            query,
+            process.returncode,
+            stderr.decode(errors="replace")[:500],
+        )
         return []
 
     candidates: list[dict] = []
@@ -232,15 +241,25 @@ async def extract_spotify_playlist_info(url: str) -> PlaylistInfo | None:
     """
     playlist_id = extract_spotify_playlist_id(url)
     if not playlist_id:
+        logger.warning("Could not extract Spotify playlist ID from %r", url)
         return None
 
+    logger.info("Fetching Spotify playlist %s", playlist_id)
     try:
         spotify_tracks = await get_spotify_playlist_tracks(playlist_id)
-    except Exception:
+    except Exception as e:
+        logger.exception("Spotify API call failed for playlist %s: %s", playlist_id, e)
         return None
 
     if not spotify_tracks:
+        logger.warning("Spotify playlist %s returned 0 tracks", playlist_id)
         return None
+
+    logger.info(
+        "Spotify playlist %s has %d tracks, resolving to YouTube...",
+        playlist_id,
+        len(spotify_tracks),
+    )
 
     # Enforce MAX_TRACKS limit before expensive YouTube searches
     spotify_tracks = spotify_tracks[: settings.max_tracks]
@@ -250,7 +269,13 @@ async def extract_spotify_playlist_info(url: str) -> PlaylistInfo | None:
     for idx, sp_track in enumerate(spotify_tracks):
         match = await find_youtube_match(sp_track)
         if not match:
+            logger.warning(
+                "No YouTube match for %r by %r", sp_track.title, sp_track.artist
+            )
             continue
+        logger.info(
+            "Matched %r by %r -> %s", sp_track.title, sp_track.artist, match.get("id")
+        )
         resolved.append(
             TrackInfo(
                 id=match["id"],
@@ -261,7 +286,16 @@ async def extract_spotify_playlist_info(url: str) -> PlaylistInfo | None:
         )
 
     if not resolved:
+        logger.warning(
+            "No tracks could be resolved to YouTube for playlist %s", playlist_id
+        )
         return None
+
+    logger.info(
+        "Resolved %d/%d Spotify tracks to YouTube videos",
+        len(resolved),
+        len(spotify_tracks),
+    )
 
     return PlaylistInfo(
         id=f"sp_{playlist_id}",

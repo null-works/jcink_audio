@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -5,6 +6,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import init_db
 from app.routes import playlist_router
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
 
 
 @asynccontextmanager

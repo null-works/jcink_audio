@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     audio_bitrate: str = "128k"
     database_path: str = "/app/data/cache.db"
     admin_ips: str = ""  # Comma-separated in env: ADMIN_IPS=1.2.3.4,5.6.7.8
+    spotify_client_id: str = ""
+    spotify_client_secret: str = ""
 
     class Config:
         env_prefix = ""

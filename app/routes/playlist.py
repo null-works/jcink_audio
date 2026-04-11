@@ -15,7 +15,11 @@ from app.models import (
     create_track,
     get_track,
 )
-from app.services import extract_playlist_id, extract_playlist_info, process_playlist
+from app.services import (
+    process_playlist,
+    resolve_playlist_id,
+    resolve_playlist_info,
+)
 from app.services.storage import get_public_url
 # Rate limiting disabled for testing
 # from app.services.ratelimit import check_refresh_allowed, record_refresh
@@ -31,16 +35,19 @@ async def submit_playlist(
     db: aiosqlite.Connection = Depends(get_db),
     refresh: bool = False
 ):
-    """Submit a YouTube playlist URL for processing.
+    """Submit a playlist URL for processing.
+
+    Accepts YouTube or Spotify playlist URLs. For Spotify, tracks are resolved
+    to their closest YouTube equivalents before downloading.
 
     If playlist is already cached, returns existing data.
     Otherwise, extracts metadata and queues for processing.
-    Use ?refresh=true to force re-fetch from YouTube.
+    Use ?refresh=true to force re-fetch.
     """
-    # Extract playlist ID from URL
-    playlist_id = extract_playlist_id(data.url)
+    # Extract playlist ID from URL (handles YouTube + Spotify)
+    playlist_id = resolve_playlist_id(data.url)
     if not playlist_id:
-        raise HTTPException(status_code=400, detail="Invalid YouTube playlist URL")
+        raise HTTPException(status_code=400, detail="Invalid playlist URL")
 
     # Check if already cached
     existing = await get_playlist(db, playlist_id)
@@ -96,8 +103,8 @@ async def submit_playlist(
         # Rate limiting disabled for testing
         # record_refresh(client_ip)
 
-    # Extract playlist info from YouTube
-    playlist_info = await extract_playlist_info(data.url)
+    # Extract playlist info (YouTube or Spotify)
+    playlist_info = await resolve_playlist_info(data.url)
     if not playlist_info:
         raise HTTPException(status_code=400, detail="Failed to extract playlist info")
 

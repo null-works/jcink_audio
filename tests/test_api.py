@@ -41,7 +41,7 @@ class TestPlaylistEndpoints:
 
     async def test_submit_playlist_success(self, client, test_db, mock_playlist_info):
         """Test successful playlist submission."""
-        with patch("app.routes.playlist.extract_playlist_info", new_callable=AsyncMock) as mock_extract, \
+        with patch("app.routes.playlist.resolve_playlist_info", new_callable=AsyncMock) as mock_extract, \
              patch("app.routes.playlist.process_playlist", new_callable=AsyncMock) as mock_process:
             mock_extract.return_value = mock_playlist_info
 
@@ -67,7 +67,7 @@ class TestPlaylistEndpoints:
 
     async def test_submit_playlist_extraction_failed(self, client, test_db):
         """Test handling of yt-dlp extraction failure."""
-        with patch("app.routes.playlist.extract_playlist_info", new_callable=AsyncMock) as mock_extract:
+        with patch("app.routes.playlist.resolve_playlist_info", new_callable=AsyncMock) as mock_extract:
             mock_extract.return_value = None
 
             response = await client.post(
@@ -79,7 +79,7 @@ class TestPlaylistEndpoints:
 
     async def test_submit_playlist_returns_cached(self, client, test_db, mock_playlist_info):
         """Test that cached playlist is returned without re-processing."""
-        with patch("app.routes.playlist.extract_playlist_info", new_callable=AsyncMock) as mock_extract, \
+        with patch("app.routes.playlist.resolve_playlist_info", new_callable=AsyncMock) as mock_extract, \
              patch("app.routes.playlist.process_playlist", new_callable=AsyncMock):
             mock_extract.return_value = mock_playlist_info
 
@@ -98,12 +98,12 @@ class TestPlaylistEndpoints:
             assert response2.status_code == 200
             assert response2.json()["id"] == "PLtest123"
 
-            # extract_playlist_info should only be called once (first time)
+            # resolve_playlist_info should only be called once (first time)
             assert mock_extract.call_count == 1
 
     async def test_get_playlist_success(self, client, test_db, mock_playlist_info):
         """Test getting playlist by ID."""
-        with patch("app.routes.playlist.extract_playlist_info", new_callable=AsyncMock) as mock_extract, \
+        with patch("app.routes.playlist.resolve_playlist_info", new_callable=AsyncMock) as mock_extract, \
              patch("app.routes.playlist.process_playlist", new_callable=AsyncMock):
             mock_extract.return_value = mock_playlist_info
 
@@ -129,7 +129,7 @@ class TestPlaylistEndpoints:
 
     async def test_get_track_redirect(self, client, test_db, mock_playlist_info):
         """Test track redirect to public R2 URL."""
-        with patch("app.routes.playlist.extract_playlist_info", new_callable=AsyncMock) as mock_extract, \
+        with patch("app.routes.playlist.resolve_playlist_info", new_callable=AsyncMock) as mock_extract, \
              patch("app.routes.playlist.process_playlist", new_callable=AsyncMock), \
              patch("app.routes.playlist.get_public_url") as mock_public_url:
             mock_extract.return_value = mock_playlist_info
@@ -159,7 +159,7 @@ class TestPlaylistEndpoints:
 
     async def test_get_track_not_ready(self, client, test_db, mock_playlist_info):
         """Test getting track that hasn't been processed yet."""
-        with patch("app.routes.playlist.extract_playlist_info", new_callable=AsyncMock) as mock_extract, \
+        with patch("app.routes.playlist.resolve_playlist_info", new_callable=AsyncMock) as mock_extract, \
              patch("app.routes.playlist.process_playlist", new_callable=AsyncMock):
             mock_extract.return_value = mock_playlist_info
 

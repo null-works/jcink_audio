@@ -126,15 +126,24 @@ In-memory dict tracking per-IP: 1 min cooldown between refreshes, max 3/day, blo
 **SQLite data volume:** Mounted from `/opt/youtube-cache/data:/app/data` (see `docker-compose.yml`).
 
 ```bash
-# Update deploy
-cd ~/jcink_audio && git pull && docker build -t audio-cache . && docker rm -f audio-cache && docker compose up -d
+# Update deploy (CORRECT: let compose build its own image)
+cd ~/jcink_audio && git pull && docker compose up -d --build
 
-# Verify the build picked up changes (Docker layer caching can serve stale code)
+# Verify the build picked up changes
+docker exec audio-cache ls -la /app/app/services/
 docker exec audio-cache cat /app/app/<file-to-check>
 ```
 
 ### Docker build caching gotcha
-Docker's `COPY app/ ./app/` layer can cache stale code even after `git pull`. If `docker exec` shows old code in the container, run `docker builder prune -f` before rebuilding. Avoid `docker build --no-cache` on low-memory VPS — it rebuilds all layers (including apt-get and pip install) and can OOM the server.
+**Do NOT use `docker build -t audio-cache .` followed by `docker compose up -d`** — this was a multi-session trap. The standalone `docker build` tags an image as `audio-cache`, but docker-compose has `build: .` in the compose file, so it builds its *own* image (tagged `jcink_audio-audio-cache` or similar) and launches that. The `docker build` command's output is completely ignored. The result: the compose image can sit cached for months while you think you're redeploying new code.
+
+Always use `docker compose up -d --build` — the `--build` flag forces compose to rebuild its own image. If the COPY layer is still cached and serving stale code, run `docker builder prune -f` before rebuilding. Avoid `docker build --no-cache` on low-memory VPS — it rebuilds all layers (including apt-get and pip install) and can OOM the server.
+
+To sanity-check what's actually in the running container, compare file timestamps:
+```bash
+docker exec audio-cache ls -la /app/app/services/ | head
+```
+If the dates are all from months ago, the container is running a stale image.
 
 ### VPS recovery notes
 The VPS is a Proxmox LXC container. If the server becomes unreachable after a hard reboot, use the VPS provider's web console (not SSH). The network interface is `eth0` (not `venet0`). If SSH fails from your local machine after a reboot, the host key may have changed — clear it with `ssh-keygen -R inklit.ch` and reconnect.

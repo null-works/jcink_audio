@@ -6,7 +6,7 @@ services:
     ports:
       - "8942:8000"
     volumes:
-      # Host data dir holds cache.db AND cookies.txt (mounted to /app/data)
+      # Host data dir holds cache.db (mounted to /app/data)
       - /opt/jcink_audio/data:/app/data
     # Secrets (R2_*, SPOTIFY_*, DASHBOARD_*) live in .env on the server only.
     # .env is gitignored — never commit real credentials. See .env.example.
@@ -17,17 +17,28 @@ services:
       - R2_PUBLIC_URL=https://media.imagehut.ch
       - MAX_TRACKS=15
       - AUDIO_BITRATE=128k
-      # yt-dlp needs cookies to download from this datacenter IP (YouTube
-      # bot-check). Drop a Netscape cookies.txt at /opt/jcink_audio/data/.
-      - YOUTUBE_COOKIES_FILE=/app/data/cookies.txt
-      # PO-token provider sidecar (below). Without it YouTube returns only
-      # storyboard images even with valid cookies.
-      - YOUTUBE_POT_BASE_URL=http://bgutil-provider:4416
+      # The VPS IP (OVH) is YouTube-blocked — storyboards only, even with
+      # cookies + PO token. Route ALL yt-dlp traffic through the yt-egress
+      # sidecar, which tunnels out via inkwitch's clean IP. With a clean IP
+      # neither cookies nor a PO token are needed — and cookies from a
+      # logged-in account actually re-trigger the block, so leave them off.
+      - YOUTUBE_PROXY=socks5h://yt-egress:1080
+      - YOUTUBE_COOKIES_FILE=
+      - YOUTUBE_POT_BASE_URL=
     depends_on:
-      - bgutil-provider
+      - yt-egress
 
-  bgutil-provider:
-    image: brainicism/bgutil-ytdlp-pot-provider:latest
-    container_name: bgutil-provider
+  # Persistent SSH SOCKS tunnel out through inkwitch.xyz (clean YouTube IP).
+  # Needs the private key at /opt/jcink_audio/secrets/egress_key on the host
+  # and its pubkey in inkwitch's root authorized_keys.
+  yt-egress:
+    build:
+      context: .
+      dockerfile: Dockerfile.egress
+    container_name: yt-egress
     restart: unless-stopped
-    init: true
+    environment:
+      - EGRESS_HOST=inkwitch.xyz
+      - EGRESS_USER=root
+    volumes:
+      - /opt/jcink_audio/secrets/egress_key:/egress_key:ro

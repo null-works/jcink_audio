@@ -148,32 +148,33 @@ docker exec audio-cache ls -la /app/app/services/ | head
 ```
 If the dates are all from months ago, the container is running a stale image.
 
-### YouTube bot-check / cookies (REQUIRED for downloads)
-YouTube blocks unauthenticated downloads from this datacenter IP with
-`ERROR: Sign in to confirm you're not a bot`. This is **not** a yt-dlp version
-problem — verified that even the latest yt-dlp fails here without auth.
-Metadata (`--flat-playlist`) still works (it never fetches the stream), so a
-playlist *loads tracks* then every download errors and it never completes.
+### YouTube IP block → egress via inkwitch (THE working solution)
+The OVH VPS IP (`15.204.225.201`) is YouTube-blocked at the IP-reputation
+level: without cookies → "Sign in to confirm you're not a bot"; **with**
+valid cookies + a working PO token → only storyboard images, every player
+client. Verified exhaustively — cookies and PO tokens do **not** fix it.
 
-Fix: supply a Netscape-format `cookies.txt` from a logged-in (ideally
-throwaway) Google account at `/opt/jcink_audio/data/cookies.txt`. The code
-(`_cookie_args()` in `app/services/youtube.py`) auto-uses it when
-`YOUTUBE_COOKIES_FILE` points to an existing file. Cookies expire — if
-downloads start failing the bot-check again, refresh `cookies.txt`. Export
-with a browser extension (e.g. "Get cookies.txt LOCALLY") while logged into
-youtube.com.
+Fix: route all yt-dlp traffic through **inkwitch.xyz** (`104.251.211.185`,
+a small-provider box whose IP YouTube does NOT block). From that IP YouTube
+serves full audio **with no cookies and no PO token** — in fact account
+cookies *re-trigger* the block, so we send none.
 
-### PO token provider (ALSO required)
-Cookies alone are no longer enough: YouTube returns only storyboard images
-("Only images are available for download") unless a PO token is supplied.
-A `bgutil-provider` sidecar (compose service, image
-`brainicism/bgutil-ytdlp-pot-provider`) mints tokens; the
-`bgutil-ytdlp-pot-provider` yt-dlp plugin (in requirements.txt) fetches them
-from it. `_pot_args()` in `app/services/youtube.py` passes
-`youtubepot-bgutilhttp:base_url` (set via `YOUTUBE_POT_BASE_URL` →
-`http://bgutil-provider:4416`). Both the sidecar AND valid cookies must be
-healthy for downloads to work. Quick check the provider is up:
-`docker exec audio-cache python3 -c "import urllib.request as u; print(u.urlopen('http://bgutil-provider:4416/ping').read())"`
+Mechanism: the `yt-egress` compose sidecar (`Dockerfile.egress`, autossh)
+holds a persistent SSH SOCKS tunnel to `root@inkwitch.xyz` and exposes
+`socks5h://yt-egress:1080` on the compose network (never published).
+`_proxy_args()` in `app/services/youtube.py` adds `--proxy` from
+`YOUTUBE_PROXY`. `YOUTUBE_COOKIES_FILE`/`YOUTUBE_POT_BASE_URL` are left
+empty (code keeps the knobs but they're unused now).
+
+Requirements:
+- Private key at `/opt/jcink_audio/secrets/egress_key` (host, gitignored),
+  pubkey in inkwitch's `~root/.ssh/authorized_keys`.
+- Health check: `docker logs yt-egress` (autossh) and
+  `docker exec audio-cache sh -c 'yt-dlp --proxy socks5h://yt-egress:1080 -F https://www.youtube.com/watch?v=dQw4w9WgXcQ'`
+  should list real audio formats, not "Only images".
+- If inkwitch ever gets blocked too, point the tunnel at another clean-IP
+  box (edit `EGRESS_HOST`/`EGRESS_USER` in `docker-compose.yml`, install
+  the egress pubkey there, redeploy).
 
 ### VPS recovery notes
 The VPS is a Proxmox LXC container. If the server becomes unreachable after a hard reboot, use the VPS provider's web console (not SSH). The network interface is `eth0` (not `venet0`). If SSH fails from your local machine after a reboot, the host key may have changed — clear it with `ssh-keygen -R inklit.ch` and reconnect.

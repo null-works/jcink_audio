@@ -8,6 +8,8 @@ __pycache__/
 venv/
 *.db
 data/
+# SSH key for the yt-egress tunnel — server-only, never commit
+secrets/
 .idea/
 .vscode/
 *.log

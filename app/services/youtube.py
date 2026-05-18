@@ -33,6 +33,14 @@ def _pot_args() -> list[str]:
     return []
 
 
+def _proxy_args() -> list[str]:
+    """Return yt-dlp --proxy args. Routes traffic through the yt-egress
+    sidecar so requests leave from inkwitch's (non-blocked) IP."""
+    if settings.youtube_proxy:
+        return ["--proxy", settings.youtube_proxy]
+    return []
+
+
 @dataclass
 class TrackInfo:
     """Metadata for a single track."""
@@ -92,6 +100,7 @@ async def extract_playlist_info(url: str) -> PlaylistInfo | None:
             "--flat-playlist",
             "--dump-json",
             "--no-warnings",
+            *_proxy_args(),
             *_cookie_args(),
             *_pot_args(),
             canonical_url,
@@ -169,6 +178,7 @@ async def download_track(video_id: str, output_dir: str) -> str | None:
             "--audio-quality", settings.audio_bitrate,
             "--no-playlist",
             "--no-warnings",
+            *_proxy_args(),
             *_cookie_args(),
             *_pot_args(),
             "-o", output_template,

@@ -1,0 +1,8 @@
+# yt-egress: persistent SSH SOCKS tunnel out through inkwitch.xyz.
+# YouTube blocks the OVH VPS IP (storyboards-only); inkwitch's IP is clean,
+# so all yt-dlp traffic egresses through here. SOCKS port 1080 is only on
+# the compose network (no published port) — never exposed publicly.
+FROM alpine:3.20
+RUN apk add --no-cache openssh-client autossh
+# EGRESS_USER@EGRESS_HOST set in docker-compose; key bind-mounted at /egress_key
+ENTRYPOINT ["/bin/sh","-c","exec autossh -M 0 -N -D 0.0.0.0:1080 -i /egress_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/tmp/known_hosts -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes ${EGRESS_USER}@${EGRESS_HOST}"]

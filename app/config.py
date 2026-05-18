@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     # PO token (beyond cookies) or it returns only storyboard images.
     # Empty = don't request PO tokens.
     youtube_pot_base_url: str = ""  # YOUTUBE_POT_BASE_URL
+    # SOCKS/HTTP proxy for yt-dlp. The VPS IP is YouTube-blocked; route
+    # through the yt-egress sidecar (egresses via inkwitch's clean IP).
+    youtube_proxy: str = ""  # YOUTUBE_PROXY (e.g. socks5h://yt-egress:1080)
 
     class Config:
         env_prefix = ""

@@ -8,6 +8,19 @@ from urllib.parse import parse_qs, urlparse
 from app.config import settings
 
 
+def _cookie_args() -> list[str]:
+    """Return yt-dlp --cookies args if a cookies file is configured and exists.
+
+    YouTube blocks unauthenticated downloads from datacenter/VPS IPs with a
+    "Sign in to confirm you're not a bot" error. Passing cookies from a
+    logged-in account is required for downloads to succeed from the server.
+    """
+    path = settings.youtube_cookies_file
+    if path and os.path.isfile(path):
+        return ["--cookies", path]
+    return []
+
+
 @dataclass
 class TrackInfo:
     """Metadata for a single track."""
@@ -67,6 +80,7 @@ async def extract_playlist_info(url: str) -> PlaylistInfo | None:
             "--flat-playlist",
             "--dump-json",
             "--no-warnings",
+            *_cookie_args(),
             canonical_url,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -142,6 +156,7 @@ async def download_track(video_id: str, output_dir: str) -> str | None:
             "--audio-quality", settings.audio_bitrate,
             "--no-playlist",
             "--no-warnings",
+            *_cookie_args(),
             "-o", output_template,
             f"https://www.youtube.com/watch?v={video_id}",
             stdout=asyncio.subprocess.PIPE,

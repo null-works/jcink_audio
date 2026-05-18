@@ -1,0 +1,13 @@
+# Force LF for all text files. Prevents the Windows/PowerShell CRLF rewrite
+# that previously made whole-file diffs and hid real changes (the
+# "git isn't connecting properly" symptom).
+* text=auto eol=lf
+*.py text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.txt text eol=lf
+*.md text eol=lf
+*.html text eol=lf
+*.json text eol=lf
+Dockerfile text eol=lf
+.env.example text eol=lf

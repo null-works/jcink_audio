@@ -117,17 +117,20 @@ In-memory dict tracking per-IP: 1 min cooldown between refreshes, max 3/day, blo
 
 ## Deployment
 
-**VPS:** `sys.inklit.ch` (Proxmox LXC container). SSH as root.
+**VPS:** `inklit.ch` → `15.204.225.201` (OVH VPS, Ubuntu, Docker). SSH as
+`ubuntu` (passwordless sudo). The old `sys.inklit.ch` Proxmox box is retired.
 
-**App location:** `~/jcink_audio` on the server (previously `/opt/youtube-cache/app`, now migrated).
+**App location:** `/opt/jcink_audio` on the server (compose project dir).
 
-**Stack:** Docker container (`audio-cache`), managed via `docker compose`. Nginx reverse proxies `audio.imagehut.ch` to container port 8942. R2 CDN at `media.imagehut.ch`. SSL via Certbot.
+**Stack:** Docker container (`audio-cache`, compose image `jcink_audio-audio-cache`), managed via `docker compose`. Host nginx reverse proxies `audio.imagehut.ch` to container port 8942. R2 CDN at `media.imagehut.ch`. SSL via Certbot.
 
-**SQLite data volume:** Mounted from `/opt/youtube-cache/data:/app/data` (see `docker-compose.yml`).
+**SQLite data volume:** `/opt/jcink_audio/data:/app/data` (see `docker-compose.yml`). Also holds `cookies.txt` (see YouTube cookies below).
+
+**Secrets:** live only in `/opt/jcink_audio/.env` (gitignored, loaded via compose `env_file`). Never commit real credentials — see `.env.example`.
 
 ```bash
 # Update deploy (CORRECT: let compose build its own image)
-cd ~/jcink_audio && git pull && docker compose up -d --build
+cd /opt/jcink_audio && git pull && docker compose up -d --build
 
 # Verify the build picked up changes
 docker exec audio-cache ls -la /app/app/services/
@@ -144,6 +147,21 @@ To sanity-check what's actually in the running container, compare file timestamp
 docker exec audio-cache ls -la /app/app/services/ | head
 ```
 If the dates are all from months ago, the container is running a stale image.
+
+### YouTube bot-check / cookies (REQUIRED for downloads)
+YouTube blocks unauthenticated downloads from this datacenter IP with
+`ERROR: Sign in to confirm you're not a bot`. This is **not** a yt-dlp version
+problem — verified that even the latest yt-dlp fails here without auth.
+Metadata (`--flat-playlist`) still works (it never fetches the stream), so a
+playlist *loads tracks* then every download errors and it never completes.
+
+Fix: supply a Netscape-format `cookies.txt` from a logged-in (ideally
+throwaway) Google account at `/opt/jcink_audio/data/cookies.txt`. The code
+(`_cookie_args()` in `app/services/youtube.py`) auto-uses it when
+`YOUTUBE_COOKIES_FILE` points to an existing file. Cookies expire — if
+downloads start failing the bot-check again, refresh `cookies.txt`. Export
+with a browser extension (e.g. "Get cookies.txt LOCALLY") while logged into
+youtube.com.
 
 ### VPS recovery notes
 The VPS is a Proxmox LXC container. If the server becomes unreachable after a hard reboot, use the VPS provider's web console (not SSH). The network interface is `eth0` (not `venet0`). If SSH fails from your local machine after a reboot, the host key may have changed — clear it with `ssh-keygen -R inklit.ch` and reconnect.

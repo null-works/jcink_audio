@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import init_db
 from app.routes import playlist_router
+from app.routes.dashboard import router as dashboard_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -42,3 +43,4 @@ async def health_check():
 
 # Register API routes
 app.include_router(playlist_router, prefix="/api")
+app.include_router(dashboard_router)

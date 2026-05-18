@@ -108,3 +108,33 @@ async def get_track(db: aiosqlite.Connection, track_id: str) -> Track | None:
     if row:
         return Track(**dict(row))
     return None
+
+
+async def update_track_title(db: aiosqlite.Connection, track_id: str, title: str):
+    """Update track title."""
+    await db.execute(
+        "UPDATE tracks SET title = ? WHERE id = ?",
+        (title, track_id)
+    )
+    await db.commit()
+
+
+async def get_all_playlists(db: aiosqlite.Connection) -> list[Playlist]:
+    """Get all playlists, newest activity first."""
+    cursor = await db.execute("SELECT * FROM playlists ORDER BY updated_at DESC")
+    rows = await cursor.fetchall()
+    return [Playlist(**dict(row)) for row in rows]
+
+
+async def get_all_tracks(db: aiosqlite.Connection) -> list[Track]:
+    """Get all tracks across playlists."""
+    cursor = await db.execute("SELECT * FROM tracks ORDER BY position")
+    rows = await cursor.fetchall()
+    return [Track(**dict(row)) for row in rows]
+
+
+async def delete_playlist(db: aiosqlite.Connection, playlist_id: str):
+    """Delete a playlist and all its tracks from the database."""
+    await db.execute("DELETE FROM tracks WHERE playlist_id = ?", (playlist_id,))
+    await db.execute("DELETE FROM playlists WHERE id = ?", (playlist_id,))
+    await db.commit()

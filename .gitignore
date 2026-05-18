@@ -11,3 +11,6 @@ data/
 .idea/
 .vscode/
 *.log
+
+# Local Claude config (personal, do not commit)
+.claude/settings.local.json

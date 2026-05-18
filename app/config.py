@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     # Path to a Netscape-format cookies.txt for yt-dlp. Required for YouTube
     # downloads from datacenter IPs (YouTube bot-check). Empty = no cookies.
     youtube_cookies_file: str = ""  # YOUTUBE_COOKIES_FILE
+    # Base URL of a bgutil PO-token provider. YouTube now also requires a
+    # PO token (beyond cookies) or it returns only storyboard images.
+    # Empty = don't request PO tokens.
+    youtube_pot_base_url: str = ""  # YOUTUBE_POT_BASE_URL
 
     class Config:
         env_prefix = ""

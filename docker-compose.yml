@@ -20,3 +20,14 @@ services:
       # yt-dlp needs cookies to download from this datacenter IP (YouTube
       # bot-check). Drop a Netscape cookies.txt at /opt/jcink_audio/data/.
       - YOUTUBE_COOKIES_FILE=/app/data/cookies.txt
+      # PO-token provider sidecar (below). Without it YouTube returns only
+      # storyboard images even with valid cookies.
+      - YOUTUBE_POT_BASE_URL=http://bgutil-provider:4416
+    depends_on:
+      - bgutil-provider
+
+  bgutil-provider:
+    image: brainicism/bgutil-ytdlp-pot-provider:latest
+    container_name: bgutil-provider
+    restart: unless-stopped
+    init: true

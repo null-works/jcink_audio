@@ -21,6 +21,18 @@ def _cookie_args() -> list[str]:
     return []
 
 
+def _pot_args() -> list[str]:
+    """Return yt-dlp args pointing at a bgutil PO-token provider.
+
+    Without a PO token YouTube returns only storyboard images ("Only images
+    are available") for downloads from this server, even with valid cookies.
+    """
+    base = settings.youtube_pot_base_url
+    if base:
+        return ["--extractor-args", f"youtubepot-bgutilhttp:base_url={base}"]
+    return []
+
+
 @dataclass
 class TrackInfo:
     """Metadata for a single track."""
@@ -81,6 +93,7 @@ async def extract_playlist_info(url: str) -> PlaylistInfo | None:
             "--dump-json",
             "--no-warnings",
             *_cookie_args(),
+            *_pot_args(),
             canonical_url,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -157,6 +170,7 @@ async def download_track(video_id: str, output_dir: str) -> str | None:
             "--no-playlist",
             "--no-warnings",
             *_cookie_args(),
+            *_pot_args(),
             "-o", output_template,
             f"https://www.youtube.com/watch?v={video_id}",
             stdout=asyncio.subprocess.PIPE,

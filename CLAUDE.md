@@ -163,6 +163,18 @@ downloads start failing the bot-check again, refresh `cookies.txt`. Export
 with a browser extension (e.g. "Get cookies.txt LOCALLY") while logged into
 youtube.com.
 
+### PO token provider (ALSO required)
+Cookies alone are no longer enough: YouTube returns only storyboard images
+("Only images are available for download") unless a PO token is supplied.
+A `bgutil-provider` sidecar (compose service, image
+`brainicism/bgutil-ytdlp-pot-provider`) mints tokens; the
+`bgutil-ytdlp-pot-provider` yt-dlp plugin (in requirements.txt) fetches them
+from it. `_pot_args()` in `app/services/youtube.py` passes
+`youtubepot-bgutilhttp:base_url` (set via `YOUTUBE_POT_BASE_URL` →
+`http://bgutil-provider:4416`). Both the sidecar AND valid cookies must be
+healthy for downloads to work. Quick check the provider is up:
+`docker exec audio-cache python3 -c "import urllib.request as u; print(u.urlopen('http://bgutil-provider:4416/ping').read())"`
+
 ### VPS recovery notes
 The VPS is a Proxmox LXC container. If the server becomes unreachable after a hard reboot, use the VPS provider's web console (not SSH). The network interface is `eth0` (not `venet0`). If SSH fails from your local machine after a reboot, the host key may have changed — clear it with `ssh-keygen -R inklit.ch` and reconnect.
 
